@@ -1,4 +1,3 @@
-#![allow(unused_mut)]
 #![allow(unused_must_use)]
 #![allow(unused_variables)]
 #![allow(dead_code)]
@@ -11,6 +10,8 @@ extern crate regex;
 extern crate time;
 extern crate rand;
 extern crate crypto;
+#[macro_use]
+extern crate lazy_static;
 
 use std::env;
 use std::thread;
@@ -75,46 +76,237 @@ struct Submission {
 	botnick: String,
 }
 
+#[derive(Debug)]
+struct DamageFormula {
+	dice: String,
+	adjustment: i32,
+	damagetype: u64,
+}
+
+#[derive(Debug)]
+enum HitRoll {
+	Crit,
+	Fumble,
+	Hit,
+	Miss,
+}
+
+#[derive(Debug)]
+enum Advantage {
+	Advantage,
+	Disadvantage,
+	Normal,
+}
+
+#[derive(Debug)]
+struct InventorySlot {
+	slot_id: u64,
+	item_id: i64,
+}
+
+#[derive(Debug)]
+struct Player {
+	uid: i64,
+	nick: String,
+	race: String,
+	class: String,
+	level: i64,
+	strength: i32,
+	constitution: i32,
+	dexterity: i32,
+	intelligence: i32,
+	wisdom: i32,
+	charisma: i32,
+	racial_abilities: u64,
+	class_abilities: u64,
+	spell_effects: u64,
+	inventory: Vec<InventorySlot>,
+	max_hp: u64,
+	current_hp: u64,
+	fumbled: i8,
+	init_mod: i8,
+	tocrit: i8,
+	
+}
+
+#[derive(Debug)]
+struct Item {
+	item_id: i64,
+	name: String,
+	description: String,
+	value: i64,
+	attributes: u64,
+	slots: i16,
+	damage_base: String,
+	damage_base_type: u64,
+	additional_damage_1: String,
+	additional_damage_1_type: u64,
+	additional_damage_2: String,
+	additional_damage_2_type: u64,
+	ac: i8,
+	triggered_magic_effect: u64,
+	triggered_magic_charges: u64,
+	constant_magic_effect: u64,
+	required_attribute: i8,
+	required_attribute_min: i8,
+}
+
+/*let mut stmt = conn.prepare(format!("SELECT * FROM messages WHERE recipient = '{}' ORDER BY ts", &nick).as_str()).unwrap();
+	let mut allrows = stmt.query_map(&[], |row| {
+		Row {
+			sender: row.get(0),
+			//recipient: row.get(1),
+			message: row.get(2),
+			ts: row.get(3)
+		}
+	}).unwrap();*/
+
+lazy_static! {
+	static ref ITEMS: Vec<Item> = {
+		let mut items: Vec<Item> = Vec::new();
+		let conn = Connection::open("/home/bob/etc/snbot/usersettings.db").unwrap();
+		let mut stmt = conn.prepare(format!("SELECT * FROM items ORDER BY itemid").as_str()).unwrap();
+		let mut allrows = stmt.query_map(&[], |row| {
+			let attributes: i64 = row.get(4);
+			let slots: i32 = row.get(5);
+			let damage_base_type: i64 = row.get(7);
+			let additional_damage_1_type: i64 = row.get(9);
+			let additional_damage_2_type: i64 = row.get(11);
+			let ac: i32 = row.get(12);
+			let triggered_magic_effect: i64 = row.get(13);
+			let triggered_magic_charges: i64 = row.get(14);
+			let constant_magic_effect: i64 = row.get(15);
+			let required_attribute: i32 = row.get(16);
+			let required_attribute_min: i32 = row.get(17);
+			Item {
+				item_id: row.get(0),
+				name: row.get(1),
+				description: row.get(2),
+				value: row.get(3),
+				attributes: attributes as u64,
+				slots: slots as i16,
+				damage_base: row.get(6),
+				damage_base_type: damage_base_type as u64,
+				additional_damage_1: row.get(8),
+				additional_damage_1_type: additional_damage_1_type as u64,
+				additional_damage_2: row.get(10),
+				additional_damage_2_type: additional_damage_2_type as u64,
+				ac: ac as i8,
+				triggered_magic_effect: triggered_magic_effect as u64,
+				triggered_magic_charges: triggered_magic_charges as u64,
+				constant_magic_effect: constant_magic_effect as u64,
+				required_attribute: required_attribute as i8,
+				required_attribute_min: required_attribute_min as i8,
+			}
+		}).unwrap();
+		conn.close();
+		for row in allrows {
+			let item = row.unwrap();
+			items.push(item);
+		}
+		items
+	};
+}
+
 const DEBUG: bool = false;
 const ITEM_MONEY: i64 = 1_i64;
 const RACES: &'static [&'static str] = &["human", "highelf", "woodelf", "darkelf", "hilldwarf", "mountaindwarf", "lightfoothalfling", "stouthalfling", "blackdragonborn", "bluedragonborn", "brassdragonborn", "bronzedragonborn", "copperdragonborn", "golddragonborn", "greendragonborn", "reddragonborn", "silverdragonborn", "whitedragonborn", "forestgnome", "rockgnome", "halfelf", "halforc", "tiefling"];
 const CLASSES: &'static [&'static str] = &["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"];
 
-// status effects
-const ABILITY_DARKVISION: u64 = 1_u64;
-const ABILITY_SUPDARKVISION: u64 = 2_u64;
-const ABILITY_DWFRESILIENCE: u64 = 4_u64;
-const ABILITY_DWFCOMBATTRAIN: u64 = 8_u64;
-const ABILITY_DWFTOOLPROF: u64 = 16_u64;
-const ABILITY_DWFTOUGHNESS: u64 = 32_u64;
-const ABILITY_DWFARMTRAIN: u64 = 64_u64;
-const ABILITY_ELFKEENSENS: u64 = 128_u64;
-const ABILITY_ELFFEYANCEST: u64 = 256_u64;
-const ABILITY_ELFCOMBATTRAIN: u64 = 512_u64;
-const ABILITY_ELFCANTRIP: u64 = 1024_u64;
-const ABILITY_ELFMOTW: u64 = 2048_u64;
-const ABILITY_DELFSUNBAD: u64 = 4096_u64;
-const ABILITY_DELFMAGIC: u64 = 8192_u64;
-const ABILITY_DELFWEAPON: u64 = 16384_u64;
-const ABILITY_HFLLUCK: u64 = 32768_u64;
-const ABILITY_HFLBRAVE: u64 = 65536_u64;
-const ABILITY_HFLSTEALTH: u64 = 131072_u64;
-const ABILITY_HFLRESILIENCE: u64 = 262144_u64;
-const ABILITY_DBNFIRE: u64 = 524288_u64;
-const ABILITY_DBNCOLD: u64 = 1048576_u64;
-const ABILITY_DBNACID: u64 = 2097152_u64;
-const ABILITY_DBNLIGHT: u64 = 4194304_u64;
-const ABILITY_DBNPOIS: u64 = 8388608_u64;
-const ABILITY_GNOCUNNING: u64 = 16777216_u64;
-const ABILITY_GNOCANTRIP: u64 = 33554432_u64;
-const ABILITY_HELSKILLPROF: u64 = 67108864_u64;
-const ABILITY_HORMENACE: u64 = 134217728_u64;
-const ABILITY_HORRELEND: u64 = 268435456_u64;
-const ABILITY_HORSAVATKS: u64 = 536870912_u64;
-const ABILITY_TIEFIRERES: u64 = 1073741824_u64;
-const ABILITY_TIECANTRIP: u64 = 2147483648_u64;
-const ABILITY_NONE: u64 = 4294967296_u64;
+// STAT ADJUSTMENTS
+const STAT_BONUSES: [i8; 31] = [-5, -5, -4, -4, -3, -3, -2, -2, -1, -1, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10];
 
+// MISC
+const PRIMARY_HAND: u64 = 1;
+const SECONDARY_HAND: u64 = 2;
+
+// RACIAL ABILITIES
+const ABILITY_DARKVISION: u64 = 1;
+const ABILITY_SUPDARKVISION: u64 = 2;
+const ABILITY_DWFRESILIENCE: u64 = 4;
+const ABILITY_DWFCOMBATTRAIN: u64 = 8;
+const ABILITY_DWFTOOLPROF: u64 = 16;
+const ABILITY_DWFTOUGHNESS: u64 = 32;
+const ABILITY_DWFARMTRAIN: u64 = 64;
+const ABILITY_ELFKEENSENS: u64 = 128;
+const ABILITY_ELFFEYANCEST: u64 = 256;
+const ABILITY_ELFCOMBATTRAIN: u64 = 512;
+const ABILITY_ELFCANTRIP: u64 = 1024;
+const ABILITY_ELFMOTW: u64 = 2048;
+const ABILITY_DELFSUNBAD: u64 = 4096;
+const ABILITY_DELFMAGIC: u64 = 8192;
+const ABILITY_DELFWEAPON: u64 = 16384;
+const ABILITY_HFLLUCK: u64 = 32768;
+const ABILITY_HFLBRAVE: u64 = 65536;
+const ABILITY_HFLSTEALTH: u64 = 131072;
+const ABILITY_HFLRESILIENCE: u64 = 262144;
+const ABILITY_DBNFIRE: u64 = 524288;
+const ABILITY_DBNCOLD: u64 = 1048576;
+const ABILITY_DBNACID: u64 = 2097152;
+const ABILITY_DBNLIGHT: u64 = 4194304;
+const ABILITY_DBNPOIS: u64 = 8388608;
+const ABILITY_GNOCUNNING: u64 = 16777216;
+const ABILITY_GNOCANTRIP: u64 = 33554432;
+const ABILITY_HELSKILLPROF: u64 = 67108864;
+const ABILITY_HORMENACE: u64 = 134217728;
+const ABILITY_HORRELEND: u64 = 268435456;
+const ABILITY_HORSAVATKS: u64 = 536870912;
+const ABILITY_TIEFIRERES: u64 = 1073741824;
+const ABILITY_TIECANTRIP: u64 = 2147483648;
+const ABILITY_NONE: u64 = 4294967296;
+
+// CLASS ABILITIES
+
+// STATUS EFFECTS
+
+// ITEM ATTRIBUTES
+const ITEM_IS_WEAPON: u64 = 1;
+const ITEM_IS_ARMOR: u64 = 2;
+const ITEM_IS_MAGIC: u64 = 4;
+const ITEM_PLUS_ONE: u64 = 8;
+const ITEM_PLUS_TWO: u64 = 16;
+const ITEM_PLUS_THREE: u64 = 32;
+const ITEM_PLUS_FOUR: u64 = 64;
+const ITEM_PLUS_FIVE: u64 = 128;
+const ITEM_ADDITIONAL_DMG_1: u64 = 256;
+const ITEM_ADDITIONAL_DMG_2: u64 = 512;
+const ITEM_IS_SHIELD: u64 = 1024;
+const ITEM_MAX_DEX_NONE: u64 = 2048;
+const ITEM_MAX_DEX_2: u64 = 4096;
+const ITEM_STEALTH_DISADVANTAGE: u64 = 8192;
+const ITEM_const_EFFECT: u64 = 16384;
+const ITEM_CHARGED: u64 = 32768;
+
+// DAMAGE TYPES
+const DAMAGE_TYPE_SLASHING: u64 = 1;
+const DAMAGE_TYPE_PIERCING: u64 = 2;
+const DAMAGE_TYPE_BLUDGEONING: u64 = 4;
+const DAMAGE_TYPE_FIRE: u64 = 8;
+const DAMAGE_TYPE_ACID: u64 = 16;
+const DAMAGE_TYPE_COLD: u64 = 32;
+const DAMAGE_TYPE_LIGHTNING: u64 = 64;
+const DAMAGE_TYPE_POISON: u64 = 128;
+const DAMAGE_TYPE_FORCE: u64 = 256;
+const DAMAGE_TYPE_NECROTIC: u64 = 512;
+const DAMAGE_TYPE_RADIANT: u64 = 1024;
+const DAMAGE_TYPE_PSYCHIC: u64 = 2048;
+const DAMAGE_TYPE_THUNDER: u64 = 4096;
+
+// INVENTORY SLOTS
+const SLOT_PRIMARY_HAND: = 1;
+const SLOT_SECONDARY_HAND = 2;
+const SLOT_ARMOR: u64 = 4;
+const SLOT_HEAD: u64 = 8;
+const SLOT_ARMS: u64 = 16;
+const SLOT_HANDS: u64 = 32;
+const SLOT_RIGHT_RING: u64 = 64;
+const SLOT_LEFT_RING: u64 = 128;
+const SLOT_FEET: u64 = 256;
+const SLOT_BACKPACK: u64 = 512;
+const SLOT_TWO_HANDED: u64 = 1024;
+const SLOT_BELT_POUCH: u64 = 2048;
+const SLOT_FACE: u64 = 4096;
+const SLOT_CAPE: u64 = 8192;
 
 fn main() {
 	let args: Vec<_> = env::args().collect();
@@ -199,19 +391,19 @@ fn main() {
 		let server = storables.server.clone();
 		let substhread = thread::spawn(move || {
 			loop {
-			for submission in subrx.recv() {
-				if DEBUG {
-					println!("{:?}", submission);
+				for submission in subrx.recv() {
+					if DEBUG {
+						println!("{:?}", submission);
+					}
+					thread::sleep(Duration::new(25,0));
+					let chan = submission.chan.clone();
+					if send_submission(&submission) {
+						server.send_privmsg(&chan, "Submission successful. https://soylentnews.org/submit.pl?op=list");
+					}
+					else {
+						server.send_privmsg(&chan, "Something borked during submitting, check the logs.");
+					}
 				}
-				thread::sleep(Duration::new(25,0));
-				let chan = submission.chan.clone();
-				if send_submission(&submission) {
-					server.send_privmsg(&chan, "Submission successful. https://soylentnews.org/submit.pl?op=list");
-				}
-				else {
-					server.send_privmsg(&chan, "Something borked during submitting, check the logs.");
-				}
-			}
 			}
 		});
 	}
@@ -521,10 +713,6 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		let command = noprefix[10..].trim().to_string();
 		command_character(&server, &botconfig, &conn, &chan, &nick, command);
 	}
-	else if &noprefixbytes[..] == "reloadregexes".as_bytes() {
-		*titleres = load_titleres(None);
-		*descres = load_descres(None);
-	}
 }
 
 fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, nick: &String, command: String) {
@@ -828,11 +1016,7 @@ fn command_submit(mut botconfig: &mut BotConfig, mut titleres: &mut Vec<Regex>,m
 
 	server.send_privmsg(&chan, "Submitting. There is a mandatory delay, please be patient.");
 	
-	let foo = subtx.send(submission);
-	match foo {
-		Ok(_) => {},
-		Err(err) => println!("{:?}", err),
-	};
+	subtx.send(submission).unwrap();
 }
 
 fn command_quit(server: &IrcServer, chan: String) {
@@ -1448,36 +1632,31 @@ fn sub_get_page(url: &String) -> String {
 }
 
 fn sub_get_title(titleres: &Vec<Regex>, page: &String) -> String {
-	let mut title = "".to_string();
 	for regex in titleres.iter() {
 		let captures = regex.captures(page.as_str());
 		if captures.is_none() {
-			title = "".to_string();
+			return "".to_string();
 		}
-		else {
-			let cap = captures.unwrap().at(1).unwrap();
-			title = cap.to_string().trim().to_string();
-			break;
+		let cap = captures.unwrap().at(1).unwrap_or("");
+		if cap != "" {
+			return cap.to_string().trim().to_string();
 		}
 	}
-	return title;
+	return "".to_string();
 }
 
 fn sub_get_description(descres: &Vec<Regex>, page: &String) -> String {
-	let mut desc = "".to_string();
 	for regex in descres.iter() {
 		let captures = regex.captures(page.as_str());
 		if captures.is_none() {
-			desc = "".to_string();
+			return "".to_string();
 		}
-		else {
-			let unwrapped = captures.unwrap();
-			let cap = unwrapped.at(1).unwrap();
-			desc = cap.to_string().trim().to_string();
-			break;
+		let cap = captures.unwrap().at(1).unwrap_or("");
+		if cap != "" {
+			return cap.to_string().trim().to_string();
 		}
-	}	
-	return desc;
+	}
+	return "".to_string();
 }
 
 //let story = sub_build_story( &submitter, &description, &summary )
@@ -1580,67 +1759,67 @@ fn sub_get_cookie(botconfig: &mut BotConfig) -> String {
 }
 
 fn load_titleres(exists: Option<Vec<Regex>>) -> Vec<Regex> {
-	let titleresf = OpenOptions::new().read(true).write(true).create(true).open("/home/bob/etc/snbot/titleres.txt");
-	if titleresf.is_err() {
-		println!("Error opening titleres.txt: {:?}", titleresf);
-		let wtf: Vec<Regex> = Vec::new();
-		return wtf;
-	}
-	let unwrapped = &titleresf.unwrap();
-	let titleresfile = BufReader::new(unwrapped);
+        let titleresf = OpenOptions::new().read(true).write(true).create(true).open("/home/bob/etc/snbot/titleres.txt");
+        if titleresf.is_err() {
+                println!("Error opening titleres.txt: {:?}", titleresf);
+                let wtf: Vec<Regex> = Vec::new();
+                return wtf;
+        }
+        let unwrapped = &titleresf.unwrap();
+        let titleresfile = BufReader::new(unwrapped);
 
-	match exists {
-		None => {
-			let mut titleres: Vec<Regex> = Vec::new();
-			for line in titleresfile.lines() {
-				if line.is_ok() {
-					titleres.push(Regex::new(line.unwrap().as_str()).unwrap());
-				}
-			}
-			return titleres;
-		},
-		Some(mut titleres) => {
-			titleres.clear();
-			for line in titleresfile.lines() {
-				if line.is_ok() {
-					titleres.push(Regex::new(line.unwrap().as_str()).unwrap());
-				}
-			}
-			return titleres;
-		},
-	};
+        match exists {
+                None => {
+                        let mut titleres: Vec<Regex> = Vec::new();
+                        for line in titleresfile.lines() {
+                                if line.is_ok() {
+                                        titleres.push(Regex::new(line.unwrap().as_str()).unwrap());
+                                }
+                        }
+                        return titleres;
+                },
+                Some(mut titleres) => {
+                        titleres.clear();
+                        for line in titleresfile.lines() {
+                                if line.is_ok() {
+                                        titleres.push(Regex::new(line.unwrap().as_str()).unwrap());
+                                }
+                        }
+                        return titleres;
+                },
+        };
 }
 
 fn load_descres(exists: Option<Vec<Regex>>) -> Vec<Regex> {
-	let descresf = OpenOptions::new().read(true).write(true).create(true).open("/home/bob/etc/snbot/descres.txt");
-	if descresf.is_err() {
-		println!("Error opening descres.txt: {:?}", descresf);
-		let wtf: Vec<Regex> = Vec::new();
-		return wtf;
-	}
-	let damnit = &descresf.unwrap();
-	let descresfile = BufReader::new(damnit);
+        let descresf = OpenOptions::new().read(true).write(true).create(true).open("/home/bob/etc/snbot/descres.txt");
+        if descresf.is_err() {
+                println!("Error opening descres.txt: {:?}", descresf);
+                let wtf: Vec<Regex> = Vec::new();
+                return wtf;
+        }
+        let damnit = &descresf.unwrap();
+        let descresfile = BufReader::new(damnit);
 
-	match exists {
-		None => {
-			let mut descres: Vec<Regex> = Vec::new();
-			for line in descresfile.lines() {
-				if line.is_ok() {
-					descres.push(Regex::new(line.unwrap().as_str()).unwrap());
-				}
-			}
-			return descres;
-		},
-		Some(mut descres) => {
-			descres.clear();
-			for line in descresfile.lines() {
-				if line.is_ok() {
-					descres.push(Regex::new(line.unwrap().as_str()).unwrap());
-				}
-			}
-			return descres;
-		},
-	};
+        match exists {
+                None => {
+                        let mut descres: Vec<Regex> = Vec::new();
+                        for line in descresfile.lines() {
+                                if line.is_ok() {
+                                        descres.push(Regex::new(line.unwrap().as_str()).unwrap());
+                                }
+                        }
+                        return descres;
+                },
+                Some(mut descres) => {
+                        descres.clear();
+                        for line in descresfile.lines() {
+                                if line.is_ok() {
+                                        descres.push(Regex::new(line.unwrap().as_str()).unwrap());
+                                }
+                        }
+                        return descres;
+                },
+        };
 }
 
 fn get_youtube(go_key: &String, query: &String) -> String {
@@ -1905,6 +2084,167 @@ fn roll_stats(conn: &Connection, nick: &String) -> Vec<i64> {
 	return stats;
 }
 
+fn roll_initiative(adjustments: &i8) -> i8 {
+	let mut rng = rand::thread_rng();
+	let random = rng.gen::<u64>();
+	let roll: i8 = ((random % 10) + 1) as i8 + *adjustments;
+	return roll;
+}
+
+fn do_combat_round(mut attacker: &mut Player, mut defender: &mut Player) {
+	let mut a_init = roll_initiative(&attacker.init_mod);
+	let mut d_init = roll_initiative(&defender.init_mod);
+	while a_init == d_init {
+		a_init = roll_initiative(&attacker.init_mod);
+		d_init = roll_initiative(&defender.init_mod);
+	}
+	
+	if a_init > d_init {
+		do_melee_attack(&mut attacker, &mut defender);
+		if is_dead(&defender) {
+			// Victory
+			return;
+		}
+		do_melee_attack(&mut defender, &mut attacker);
+		if is_dead(&attacker) {
+			// Victory
+			return;
+		}
+		return;
+	}
+	else {
+		do_melee_attack(&mut defender, &mut attacker);
+		if is_dead(&attacker) {
+			// Victory
+			return;
+		}
+		do_melee_attack(&mut attacker, &mut defender);
+		if is_dead(&defender) {
+			// Victory
+			return;
+		}
+		return;
+	}
+}
+
+// attacker/defender here do not mean the same as in do_combat_round
+// Here attacker means whoever's turn it is to attack.
+fn do_melee_attack(mut attacker: &mut Player, mut defender: &mut Player) {
+	let mut phattacks: u64 = get_ph_attacks(&attacker) + 1;
+	let advantage: Advantage;
+	if player_has_advantage(&attacker) {
+		advantage = Advantage::Advantage;
+	}
+	else if player_has_disadvantage(&attacker) {
+		advantage = Advantage::Disadvantage;
+	}
+	else {
+		advantage = Advantage::Normal;
+	}
+
+	for _ in 1..phattacks {
+		let mut damageformulas: Vec<DamageFormula>;
+		let swing: HitRoll = roll_tohit(get_ac(&defender), get_att_adj(&attacker, PRIMARY_HAND), &attacker.tocrit, &advantage);
+		match swing {
+			HitRoll::Crit => {
+				damageformulas = get_damage_formulas(&attacker, PRIMARY_HAND);
+				for formula in damageformulas.iter() {
+					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment) * 2;
+					apply_damage(&mut defender, damage, &formula.damagetype);
+				}
+			},
+			HitRoll::Fumble => { attacker.fumbled = 1; return; },
+			HitRoll::Miss => {continue;},
+			HitRoll::Hit => {
+				damageformulas = get_damage_formulas(&attacker, PRIMARY_HAND);
+				for formula in damageformulas.iter() {
+					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment);
+					apply_damage(&mut defender, damage, &formula.damagetype);
+				}
+			},
+		};
+	}
+
+	let shattacks: u64 = get_sh_attacks(&attacker) + 1;
+	for _ in 1..shattacks {
+		let mut damageformulas: Vec<DamageFormula>;
+		let swing: HitRoll = roll_tohit(get_ac(&defender), get_att_adj(&attacker, SECONDARY_HAND), &attacker.tocrit, &advantage);
+		match swing {
+			HitRoll::Crit => {
+				damageformulas = get_damage_formulas(&attacker, SECONDARY_HAND);
+				for formula in damageformulas.iter() {
+					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment) * 2;
+					apply_damage(&mut defender, damage, &formula.damagetype);
+				}
+			},
+			HitRoll::Fumble => { attacker.fumbled = 1; return; },
+			HitRoll::Miss => {continue;},
+			HitRoll::Hit => {
+				damageformulas = get_damage_formulas(&attacker, SECONDARY_HAND);
+				for formula in damageformulas.iter() {
+					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment) * 2;
+					apply_damage(&mut defender, damage, &formula.damagetype);
+				}
+			},
+		};
+	}
+}
+
+fn roll_tohit(ac: i8, adjustments: i8, tocrit: &i8, advantage: &Advantage) -> HitRoll {
+	let result: HitRoll;
+	let mut rng = rand::thread_rng();
+	let random = rng.gen::<u64>();
+	let random2 = rng.gen::<u64>();
+	let mut rawroll: i8 = ((random % 20) + 1) as i8;
+	let mut secondroll: i8 = ((random % 20) + 1) as i8;
+	match advantage {
+		&Advantage::Advantage => {
+			if secondroll > rawroll {
+				rawroll = secondroll;
+			}
+		},
+		&Advantage::Disadvantage => {
+			if secondroll < rawroll {
+				rawroll = secondroll;
+			}
+		},
+		&Advantage::Normal => {},
+	};
+	let roll: i8 = rawroll + adjustments;
+	if rawroll >= *tocrit {
+		result = HitRoll::Crit;
+	}
+	else if rawroll == 1 {
+		result = HitRoll::Fumble;
+	}
+	else if roll >= ac {
+		result = HitRoll::Hit;
+	}
+	else {
+		result = HitRoll::Miss;
+	}
+	return result;
+}
+
+fn roll_damage(dice: &String, adjustments: &i32) -> u32 {
+	let mut result: u32 = 0;
+	let mut total: i32 = 0;
+	let mut rng = rand::thread_rng();
+	let mut dpos = dice.find("d").unwrap();
+	let mut num: u64 = dice[..dpos].parse().unwrap();
+	num += 1;
+	dpos += 1;
+	let sides: u64 = dice[dpos..].parse().unwrap();
+	for _ in 1..num {
+		let random = rng.gen::<u64>();
+		let roll: u64 = (random % sides) + 1;
+		total += roll as i32;
+	}
+	total += *adjustments;
+	if total <= 0 { return 0; }
+	return total as u32;
+}
+
 fn character_exists(conn: &Connection, nick: &String) -> bool {
 	let count: i32 = conn.query_row("SELECT count(*) FROM players WHERE nick = $1", &[&nick.as_str()], |row| {
 		row.get(0)
@@ -2115,11 +2455,55 @@ fn is_class_set(conn: &Connection, nick: &String) -> bool {
 	false
 }
 
+fn player_has_advantage(player: &Player) -> bool {
+	false
+}
 
+fn player_has_disadvantage(player: &Player) -> bool {
+	false
+}
 
+fn is_dead(player: &Player) -> bool {
+	if player.current_hp <= 0 {
+		return true;
+	}
+	false
+}
 
+fn get_ph_attacks(player: &Player) -> u64 {
+	return 1;
+}
 
+fn get_ac(player: &Player) -> i8 {
+	let equipped_gear = get_equipped_gear(&player);
+	let dex_bonus = get_effective_dex_bonus(&equipped_gear[SLOT_ARMOR], STAT_BONUSES[player.dexterity as usize]);
+	let mut total_ac = 10 + dex_bonus + get_spells_ac(&player);
+	for piece_of_gear in equipped_gear.iter() {
+		total_ac += piece_of_gear.ac;
+	}
+	return total_ac;
+}
 
-
-
-
+fn get_effective_dex_bonus(armor: &Item, actual_bonus: i8) -> i8 {
+	let none: u64 = ITEM_MAX_DEX_NONE;
+	let two: u64 = ITEM_MAX_DEX_2;
+	if actual_bonus <= 0 {
+		return actual_bonus;
+	}
+	if armor.attributes & none != 0_u64 {
+		return actual_bonus;
+	}
+	if armor.attributes & two != 0_u64  && actual_bonus > 2 {
+		return 2;
+	}
+	if armor.attributes & two != 0_u64  && actual_bonus <= 2 {
+		return actual_bonus;
+	}
+	if armor.attributes & none == 0_u64 && armor.attributes & two == 0_u64 && actual_bonus >= 0 {
+		return 0;
+	}
+	if armor.attributes & none == 0_u64 && armor.attributes & two == 0_u64 && actual_bonus < 0 {
+		return actual_bonus;
+	}
+	return 0;
+}
