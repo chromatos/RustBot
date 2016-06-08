@@ -77,13 +77,6 @@ struct Submission {
 }
 
 #[derive(Debug)]
-struct DamageFormula {
-	dice: String,
-	adjustment: i32,
-	damagetype: u64,
-}
-
-#[derive(Debug)]
 enum HitRoll {
 	Crit,
 	Fumble,
@@ -126,7 +119,10 @@ struct Player {
 	fumbled: i8,
 	init_mod: i8,
 	tocrit: i8,
-	
+	spelleffects: Vec<Effect>,
+	status: Vec<Status>,
+	resistances: u64,
+	dw_bonus: bool,
 }
 
 #[derive(Debug)]
@@ -149,6 +145,28 @@ struct Item {
 	constant_magic_effect: u64,
 	required_attribute: i8,
 	required_attribute_min: i8,
+}
+
+// For spell effects. Use Status for mundane effects.
+#[derive(Debug)]
+struct Effect {
+	effect_mask: u64,
+	duration: u64, // rounds
+	expires: i64, // time
+}
+
+#[derive(Debug)]
+struct Status {
+	status_mask: u64,
+	duration: u64, // rounds
+	expires: i64, // time
+}
+
+#[derive(Debug)]
+struct DamageInfo {
+	dice: String,
+	adjustment: i8,
+	damagetype: u64,
 }
 
 /*let mut stmt = conn.prepare(format!("SELECT * FROM messages WHERE recipient = '{}' ORDER BY ts", &nick).as_str()).unwrap();
@@ -178,6 +196,8 @@ lazy_static! {
 			let constant_magic_effect: i64 = row.get(15);
 			let required_attribute: i32 = row.get(16);
 			let required_attribute_min: i32 = row.get(17);
+			let range: i32 = row.get(18);
+			let special: i64 = row.get(19);
 			Item {
 				item_id: row.get(0),
 				name: row.get(1),
@@ -197,6 +217,8 @@ lazy_static! {
 				constant_magic_effect: constant_magic_effect as u64,
 				required_attribute: required_attribute as i8,
 				required_attribute_min: required_attribute_min as i8,
+				range: range as u16,
+				special: special as u64,
 			}
 		}).unwrap();
 		conn.close();
@@ -210,6 +232,29 @@ lazy_static! {
 
 const DEBUG: bool = false;
 const ITEM_MONEY: i64 = 1_i64;
+const ITEM_NONE: i64 = 0_i64;
+static ITEM_ITEM_NONE: Item = Item {
+	item_id: 0_i64,
+	name: "".to_string(),
+	description: "".to_string(),
+	value: 0_i64,
+	attributes: 0_u64,
+	slots: 0_i16,
+	damage_base: "0d1".to_string(),
+	damage_base_type: 0_u64,
+	additional_damage_1: "".to_string(),
+	additional_damage_1_type: 0_u64,
+	additional_damage_2: "".to_string(),
+	additional_damage_2_type: 0_u64,
+	ac: 0_i8,
+	triggered_magic_effect: 0_u64,
+	triggered_magic_charges: 0_u64,
+	constant_magic_effect: 0_u64,
+	required_attribute: 0_i8,
+	required_attribute_min: 0_i8,
+	range: 0_u16,
+	special: 0_u64,
+};
 const RACES: &'static [&'static str] = &["human", "highelf", "woodelf", "darkelf", "hilldwarf", "mountaindwarf", "lightfoothalfling", "stouthalfling", "blackdragonborn", "bluedragonborn", "brassdragonborn", "bronzedragonborn", "copperdragonborn", "golddragonborn", "greendragonborn", "reddragonborn", "silverdragonborn", "whitedragonborn", "forestgnome", "rockgnome", "halfelf", "halforc", "tiefling"];
 const CLASSES: &'static [&'static str] = &["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"];
 
@@ -257,7 +302,23 @@ const ABILITY_NONE: u64 = 4294967296;
 
 // CLASS ABILITIES
 
-// STATUS EFFECTS
+// MUNDANE STATUS EFFECTS
+const STATUS_PRONE: u64 = 1;
+const STATUS_ASLEEP: u64 = 2;
+const STATUS_GRAPPLED: u64 = 4;
+const STATUS_HIDDEN: u64 = 8;
+const STATUS_BURNING: u64 = 16;
+const STATUS_CALTROP: u64 = 32;
+const STATUS_BLIND: u64 = 64;
+const STATUS_DEAF: u64 = 128;
+const STATUS_POISON: u64 = 256;
+const STATUS_STUN: u64 = 512;
+const STATUS_RESTRAIN: u64 = 1024;
+const STATUS_MARBLES: u64 = 2048;
+
+// MAGIC EFFECTS
+
+
 
 // ITEM ATTRIBUTES
 const ITEM_IS_WEAPON: u64 = 1;
@@ -274,8 +335,27 @@ const ITEM_IS_SHIELD: u64 = 1024;
 const ITEM_MAX_DEX_NONE: u64 = 2048;
 const ITEM_MAX_DEX_2: u64 = 4096;
 const ITEM_STEALTH_DISADVANTAGE: u64 = 8192;
-const ITEM_const_EFFECT: u64 = 16384;
+const ITEM_PERM_EFFECT: u64 = 16384;
 const ITEM_CHARGED: u64 = 32768;
+const ITEM_FINESSE: u64 = 65536;
+const ITEM_2HANDED: u64 = 131072;
+const ITEM_THROWN: u64 = 262144;
+const ITEM_RANGED: u64 = 524288;
+const ITEM_AMMO: u64 = 1048576;
+const ITEM_LIGHT: u64 = 2097152;
+const ITEM_MEDIUM: u64 = 4194304;
+const ITEM_HEAVY: u64 = 8388608;
+const ITEM_VERSATILE: u64 = 16777216;
+const ITEM_REACH: u64 = 33554432;
+const ITEM_SPECIAL: u64 = 67108864;
+const ITEM_SIMPLE: u64 = 134217728;
+const ITEM_MARTIAL: u64 = 268435456;
+const ITEM_ELF: u64 = 536870912;
+const ITEM_THIEF: u64 = 1073741824;
+
+// SPECIAL WEAPON CHARACTERISTICS
+const SPECIAL_LANCE: u64 = 1;
+const SPECIAL_NET: u64 = 2;
 
 // DAMAGE TYPES
 const DAMAGE_TYPE_SLASHING: u64 = 1;
@@ -291,10 +371,11 @@ const DAMAGE_TYPE_NECROTIC: u64 = 512;
 const DAMAGE_TYPE_RADIANT: u64 = 1024;
 const DAMAGE_TYPE_PSYCHIC: u64 = 2048;
 const DAMAGE_TYPE_THUNDER: u64 = 4096;
+const DAMAGE_TYPE_MAGIC: u64 = 8192;
 
 // INVENTORY SLOTS
-const SLOT_PRIMARY_HAND: = 1;
-const SLOT_SECONDARY_HAND = 2;
+const SLOT_PRIMARY_HAND: u64 = 1;
+const SLOT_SECONDARY_HAND: u64 = 2;
 const SLOT_ARMOR: u64 = 4;
 const SLOT_HEAD: u64 = 8;
 const SLOT_ARMS: u64 = 16;
@@ -307,6 +388,14 @@ const SLOT_TWO_HANDED: u64 = 1024;
 const SLOT_BELT_POUCH: u64 = 2048;
 const SLOT_FACE: u64 = 4096;
 const SLOT_CAPE: u64 = 8192;
+
+// STATS
+const STAT_STR: u8 = 1;
+const STAT_CON: u8 = 2;
+const STAT_DEX: u8 = 4;
+const STAT_INT: u8 = 8;
+const STAT_WIS: u8 = 16;
+const STAT_CHA: u8 = 32;
 
 fn main() {
 	let args: Vec<_> = env::args().collect();
@@ -2141,13 +2230,16 @@ fn do_melee_attack(mut attacker: &mut Player, mut defender: &mut Player) {
 	else {
 		advantage = Advantage::Normal;
 	}
-
+	let priweaponcheck = get_damage_formulas(&attacker, PRIMARY_HAND);
+	let mut damageformulas: Vec<DamageInfo>;
+	if priweaponcheck.is_some() {
+		damageformulas = priweaponcheck.unwrap();
+	}
+	else { phattacks = 1; }
 	for _ in 1..phattacks {
-		let mut damageformulas: Vec<DamageFormula>;
 		let swing: HitRoll = roll_tohit(get_ac(&defender), get_att_adj(&attacker, PRIMARY_HAND), &attacker.tocrit, &advantage);
 		match swing {
 			HitRoll::Crit => {
-				damageformulas = get_damage_formulas(&attacker, PRIMARY_HAND);
 				for formula in damageformulas.iter() {
 					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment) * 2;
 					apply_damage(&mut defender, damage, &formula.damagetype);
@@ -2156,7 +2248,6 @@ fn do_melee_attack(mut attacker: &mut Player, mut defender: &mut Player) {
 			HitRoll::Fumble => { attacker.fumbled = 1; return; },
 			HitRoll::Miss => {continue;},
 			HitRoll::Hit => {
-				damageformulas = get_damage_formulas(&attacker, PRIMARY_HAND);
 				for formula in damageformulas.iter() {
 					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment);
 					apply_damage(&mut defender, damage, &formula.damagetype);
@@ -2166,12 +2257,16 @@ fn do_melee_attack(mut attacker: &mut Player, mut defender: &mut Player) {
 	}
 
 	let shattacks: u64 = get_sh_attacks(&attacker) + 1;
+	if shattacks == 0_u64 { return; }
+	let secondweaponcheck = get_damage_formulas(&attacker, SECONDARY_HAND);
+	if secondweaponcheck.is_some() {
+		damageformulas = secondweaponcheck.unwrap();
+	}
+	else { return; }
 	for _ in 1..shattacks {
-		let mut damageformulas: Vec<DamageFormula>;
 		let swing: HitRoll = roll_tohit(get_ac(&defender), get_att_adj(&attacker, SECONDARY_HAND), &attacker.tocrit, &advantage);
 		match swing {
 			HitRoll::Crit => {
-				damageformulas = get_damage_formulas(&attacker, SECONDARY_HAND);
 				for formula in damageformulas.iter() {
 					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment) * 2;
 					apply_damage(&mut defender, damage, &formula.damagetype);
@@ -2180,7 +2275,6 @@ fn do_melee_attack(mut attacker: &mut Player, mut defender: &mut Player) {
 			HitRoll::Fumble => { attacker.fumbled = 1; return; },
 			HitRoll::Miss => {continue;},
 			HitRoll::Hit => {
-				damageformulas = get_damage_formulas(&attacker, SECONDARY_HAND);
 				for formula in damageformulas.iter() {
 					let damage: u32 = roll_damage(&formula.dice, &formula.adjustment) * 2;
 					apply_damage(&mut defender, damage, &formula.damagetype);
@@ -2226,7 +2320,7 @@ fn roll_tohit(ac: i8, adjustments: i8, tocrit: &i8, advantage: &Advantage) -> Hi
 	return result;
 }
 
-fn roll_damage(dice: &String, adjustments: &i32) -> u32 {
+fn roll_damage(dice: &String, adjustments: &i8) -> u32 {
 	let mut result: u32 = 0;
 	let mut total: i32 = 0;
 	let mut rng = rand::thread_rng();
@@ -2240,7 +2334,7 @@ fn roll_damage(dice: &String, adjustments: &i32) -> u32 {
 		let roll: u64 = (random % sides) + 1;
 		total += roll as i32;
 	}
-	total += *adjustments;
+	total += *adjustments as i32;
 	if total <= 0 { return 0; }
 	return total as u32;
 }
@@ -2474,13 +2568,114 @@ fn get_ph_attacks(player: &Player) -> u64 {
 	return 1;
 }
 
-fn get_ac(player: &Player) -> i8 {
-	let equipped_gear = get_equipped_gear(&player);
-	let dex_bonus = get_effective_dex_bonus(&equipped_gear[SLOT_ARMOR], STAT_BONUSES[player.dexterity as usize]);
-	let mut total_ac = 10 + dex_bonus + get_spells_ac(&player);
-	for piece_of_gear in equipped_gear.iter() {
-		total_ac += piece_of_gear.ac;
+fn get_sh_attacks(player: &Player) -> u64 {
+	return 0;
+}
+
+fn get_damage_formulas(player: &Player, hand: u64) -> Option<Vec<DamageInfo>> {
+	let mut damages: Vec<DamageInfo> = Vec::new();
+	let mut weapon: &Item = &ITEM_ITEM_NONE;
+	let mut weapon_id = ITEM_NONE;
+	for slot in player.inventory.iter() {
+		if hand == PRIMARY_HAND {
+			if slot.slot_id == SLOT_PRIMARY_HAND {
+				weapon_id = slot.item_id;
+				break;
+			}
+		}
+		else if hand == SECONDARY_HAND {
+			if slot.slot_id == SLOT_SECONDARY_HAND {
+				weapon_id = slot.item_id;
+				break;
+			}
+		}
 	}
+	for item in ITEMS.iter() {
+		if item.item_id == weapon_id {
+			weapon = &item;
+		}
+	}
+	if weapon.attributes & ITEM_IS_WEAPON == 0 {
+		return None;
+	}
+	// plusses first
+	let magic: i8 = 0_i8;
+	if weapon.attributes & ITEM_PLUS_ONE != 0 {
+		magic += 1;
+	}
+	if weapon.attributes & ITEM_PLUS_TWO != 0 {
+		magic += 2;
+	}
+	if weapon.attributes & ITEM_PLUS_THREE != 0 {
+		magic += 3;
+	}
+	if weapon.attributes & ITEM_PLUS_FOUR != 0 {
+		magic += 4;
+	}
+	if weapon.attributes & ITEM_PLUS_FIVE != 0 {
+		magic += 5;
+	}
+	if magic != 0 {
+		let magical = DamageInfo {
+			dice: "0d1".to_string(),
+			adjustment: magic,
+			damagetype: DAMAGE_TYPE_MAGIC,
+		};
+		damages.push(magical);
+	}
+
+	// stat damage bonus/penalty
+
+	// primary damage
+	let (dice, plusses) = split_dmg_formula(&weapon.damage_base);
+	let primary = DamageInfo {
+			dice: dice.clone(),
+			adjustment: plusses,
+			damagetype: weapon.damage_base_type,
+		};
+	damages.push(primary);
+	//1st elemental damage
+	if weapon.attributes & ITEM_ADDITIONAL_DMG_1 != 0 {
+		let (dice, plusses) = split_dmg_formula(&weapon.additional_damage_1);
+		let elem1 = DamageInfo {
+				dice: dice.clone(),
+				adjustment: plusses,
+				damagetype: weapon.additional_damage_1_type,
+		};
+		damages.push(elem1);
+	}
+	//2nd elemental damage
+	if weapon.attributes & ITEM_ADDITIONAL_DMG_2 != 0 {
+		let (dice, plusses) = split_dmg_formula(&weapon.additional_damage_2);
+		let elem2 = DamageInfo {
+				dice: dice.clone(),
+				adjustment: plusses,
+				damagetype: weapon.additional_damage_2_type,
+		};
+		damages.push(elem2);
+	}
+	return Some(damages);
+}
+
+// armor needs to be set to ITEM_ITEM_NONE
+fn get_ac(player: &Player) -> i8 {
+	let gear_ac = get_gear_ac(&player);
+	let mut armor: &Item = &ITEM_ITEM_NONE;
+	let mut armor_id = ITEM_NONE;
+	for slot in player.inventory.iter() {
+		if slot.slot_id == SLOT_ARMOR {
+			armor_id = slot.item_id;
+			break;
+		}
+	}
+	for item in ITEMS.iter() {
+		if item.item_id == armor_id {
+			armor = &item;
+			break;
+		}
+	}
+	let dex_bonus = get_effective_dex_bonus(&armor, STAT_BONUSES[player.dexterity as usize]);
+	let total_ac = 10 + gear_ac + dex_bonus + get_spells_ac(&player);
 	return total_ac;
 }
 
@@ -2502,8 +2697,147 @@ fn get_effective_dex_bonus(armor: &Item, actual_bonus: i8) -> i8 {
 	if armor.attributes & none == 0_u64 && armor.attributes & two == 0_u64 && actual_bonus >= 0 {
 		return 0;
 	}
-	if armor.attributes & none == 0_u64 && armor.attributes & two == 0_u64 && actual_bonus < 0 {
-		return actual_bonus;
-	}
 	return 0;
 }
+
+fn get_gear_ac(player: &Player) -> i8 {
+	let mut ac: i8 = 0;
+	for slot in player.inventory.iter() {
+		if slot.slot_id == SLOT_BACKPACK || slot.slot_id == SLOT_BELT_POUCH {
+			continue;
+		}
+		let item: &Item;
+		for this in ITEMS.iter() {
+			if this.item_id == slot.item_id {
+				item = &this;
+				break;
+			}
+		}
+		ac += item.ac;
+		if item.attributes & ITEM_PLUS_ONE != 0  && item.attributes & ITEM_IS_WEAPON == 0 {
+			ac += 1;
+		}
+		if item.attributes & ITEM_PLUS_TWO != 0  && item.attributes & ITEM_IS_WEAPON == 0 {
+			ac += 2;
+		}
+		if item.attributes & ITEM_PLUS_THREE != 0  && item.attributes & ITEM_IS_WEAPON == 0 {
+			ac += 3;
+		}
+		if item.attributes & ITEM_PLUS_FOUR != 0  && item.attributes & ITEM_IS_WEAPON == 0 {
+			ac += 4;
+		}
+		if item.attributes & ITEM_PLUS_FIVE != 0  && item.attributes & ITEM_IS_WEAPON == 0 {
+			ac += 5;
+		}
+	}
+	return ac;
+}
+
+fn get_spells_ac(player: &Player) -> i8 {
+	return 0_i8;
+}
+
+fn apply_damage(mut player: &mut Player, damage: u32, damagetype: &u64) {
+	if player.resistances & damagetype != 0 {
+		if player.current_hp >= ((damage / 2) as u64) {
+			player.current_hp = player.current_hp - ((damage / 2) as u64);
+		}
+		else {
+			player.current_hp = 0u64;
+		}
+	}
+	else {
+		if player.current_hp >= (damage as u64) {
+			player.current_hp = player.current_hp - (damage as u64);
+		}
+		else {
+			player.current_hp = 0u64;
+		}			
+	}
+}
+
+fn split_dmg_formula(formula: &String) -> (String, i8) {
+	let mut plus = formula.find("+").unwrap_or(0_usize);
+	if plus == 0_usize {
+		let fclone = formula.clone();
+		return (fclone, 0_i8);
+	}
+	let dice = formula[..plus].trim().to_string();
+	plus += 1;
+	let plusses: i8 = formula[plus..].trim().to_string().parse::<i8>().unwrap();
+	return (dice, plusses);
+}
+
+// need to add proficiency and magic checking in here
+fn get_att_adj(player: &Player, hand: u64) -> i8 {
+	let stradj = STAT_BONUSES[player.strength];
+	let dexadj = STAT_BONUSES[player.dexterity];
+	let mut useadj: i8 = 0_i8;
+	
+	let mut weapon: &Item = &ITEM_ITEM_NONE;
+	let mut weapon_id = ITEM_NONE;
+	for slot in player.inventory.iter() {
+		if hand == PRIMARY_HAND {
+			if slot.slot_id == SLOT_PRIMARY_HAND {
+				weapon_id = slot.item_id;
+				break;
+			}
+		}
+		else if hand == SECONDARY_HAND {
+			if slot.slot_id == SLOT_SECONDARY_HAND {
+				weapon_id = slot.item_id;
+				break;
+			}
+		}
+	}
+	for item in ITEMS.iter() {
+		if item.item_id == weapon_id {
+			weapon = &item;
+		}
+	}
+	
+	if weapon.attributes & ITEM_IS_WEAPON == 0 {
+		return 0_i8;
+	}
+	if player.dw_bonus == true {
+		if weapon.attributes & ITEM_FINESSE == 0 {
+			useadj = stradj;
+		}
+		else {
+			if dexadj > stradj {
+				useadj = dexadj;
+			}
+			else {
+				useadj = stradj;
+			}
+		}
+	}
+
+	// now add magic bonuses
+	if weapon.attributes & ITEM_PLUS_ONE != 0 {
+		useadj += 1;
+	}
+	if weapon.attributes & ITEM_PLUS_TWO != 0 {
+		useadj += 2;
+	}
+	if weapon.attributes & ITEM_PLUS_THREE != 0 {
+		useadj += 3;
+	}
+	if weapon.attributes & ITEM_PLUS_FOUR != 0 {
+		useadj += 4;
+	}
+	if weapon.attributes & ITEM_PLUS_FIVE != 0 {
+		useadj += 5;
+	}
+
+	// now adjust for proficiency
+	if player.proficienc
+	return useadj;
+}
+
+
+
+
+
+
+
