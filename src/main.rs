@@ -145,6 +145,8 @@ struct Item {
 	constant_magic_effect: u64,
 	required_attribute: i8,
 	required_attribute_min: i8,
+	range: u16,
+	special: u64,
 }
 
 // For spell effects. Use Status for mundane effects.
@@ -221,7 +223,6 @@ lazy_static! {
 				special: special as u64,
 			}
 		}).unwrap();
-		conn.close();
 		for row in allrows {
 			let item = row.unwrap();
 			items.push(item);
@@ -233,28 +234,30 @@ lazy_static! {
 const DEBUG: bool = false;
 const ITEM_MONEY: i64 = 1_i64;
 const ITEM_NONE: i64 = 0_i64;
-static ITEM_ITEM_NONE: Item = Item {
-	item_id: 0_i64,
-	name: "".to_string(),
-	description: "".to_string(),
-	value: 0_i64,
-	attributes: 0_u64,
-	slots: 0_i16,
-	damage_base: "0d1".to_string(),
-	damage_base_type: 0_u64,
-	additional_damage_1: "".to_string(),
-	additional_damage_1_type: 0_u64,
-	additional_damage_2: "".to_string(),
-	additional_damage_2_type: 0_u64,
-	ac: 0_i8,
-	triggered_magic_effect: 0_u64,
-	triggered_magic_charges: 0_u64,
-	constant_magic_effect: 0_u64,
-	required_attribute: 0_i8,
-	required_attribute_min: 0_i8,
-	range: 0_u16,
-	special: 0_u64,
-};
+lazy_static! {
+	static ref ITEM_ITEM_NONE: Item = Item {
+		item_id: 0_i64,
+		name: "".to_string(),
+		description: "".to_string(),
+		value: 0_i64,
+		attributes: 0_u64,
+		slots: 0_i16,
+		damage_base: "0d1".to_string(),
+		damage_base_type: 0_u64,
+		additional_damage_1: "".to_string(),
+		additional_damage_1_type: 0_u64,
+		additional_damage_2: "".to_string(),
+		additional_damage_2_type: 0_u64,
+		ac: 0_i8,
+		triggered_magic_effect: 0_u64,
+		triggered_magic_charges: 0_u64,
+		constant_magic_effect: 0_u64,
+		required_attribute: 0_i8,
+		required_attribute_min: 0_i8,
+		range: 0_u16,
+		special: 0_u64,
+	};
+}
 const RACES: &'static [&'static str] = &["human", "highelf", "woodelf", "darkelf", "hilldwarf", "mountaindwarf", "lightfoothalfling", "stouthalfling", "blackdragonborn", "bluedragonborn", "brassdragonborn", "bronzedragonborn", "copperdragonborn", "golddragonborn", "greendragonborn", "reddragonborn", "silverdragonborn", "whitedragonborn", "forestgnome", "rockgnome", "halfelf", "halforc", "tiefling"];
 const CLASSES: &'static [&'static str] = &["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"];
 
@@ -2232,10 +2235,10 @@ fn do_melee_attack(mut attacker: &mut Player, mut defender: &mut Player) {
 	}
 	let priweaponcheck = get_damage_formulas(&attacker, PRIMARY_HAND);
 	let mut damageformulas: Vec<DamageInfo>;
-	if priweaponcheck.is_some() {
-		damageformulas = priweaponcheck.unwrap();
+	damageformulas = priweaponcheck.unwrap_or(vec![DamageInfo {dice: "0d1".to_string(), adjustment: 0, damagetype: 1}]);
+	if damageformulas.len() == 1 {
+		phattacks = 1;
 	}
-	else { phattacks = 1; }
 	for _ in 1..phattacks {
 		let swing: HitRoll = roll_tohit(get_ac(&defender), get_att_adj(&attacker, PRIMARY_HAND), &attacker.tocrit, &advantage);
 		match swing {
@@ -2259,10 +2262,10 @@ fn do_melee_attack(mut attacker: &mut Player, mut defender: &mut Player) {
 	let shattacks: u64 = get_sh_attacks(&attacker) + 1;
 	if shattacks == 0_u64 { return; }
 	let secondweaponcheck = get_damage_formulas(&attacker, SECONDARY_HAND);
-	if secondweaponcheck.is_some() {
-		damageformulas = secondweaponcheck.unwrap();
+	damageformulas = secondweaponcheck.unwrap_or(vec![DamageInfo {dice: "0d1".to_string(), adjustment: 0, damagetype: 1}]);
+	if damageformulas.len() == 1 {
+		return;
 	}
-	else { return; }
 	for _ in 1..shattacks {
 		let swing: HitRoll = roll_tohit(get_ac(&defender), get_att_adj(&attacker, SECONDARY_HAND), &attacker.tocrit, &advantage);
 		match swing {
@@ -2599,7 +2602,7 @@ fn get_damage_formulas(player: &Player, hand: u64) -> Option<Vec<DamageInfo>> {
 		return None;
 	}
 	// plusses first
-	let magic: i8 = 0_i8;
+	let mut magic: i8 = 0_i8;
 	if weapon.attributes & ITEM_PLUS_ONE != 0 {
 		magic += 1;
 	}
@@ -2706,7 +2709,7 @@ fn get_gear_ac(player: &Player) -> i8 {
 		if slot.slot_id == SLOT_BACKPACK || slot.slot_id == SLOT_BELT_POUCH {
 			continue;
 		}
-		let item: &Item;
+		let mut item: &Item = &ITEM_ITEM_NONE;
 		for this in ITEMS.iter() {
 			if this.item_id == slot.item_id {
 				item = &this;
@@ -2770,8 +2773,8 @@ fn split_dmg_formula(formula: &String) -> (String, i8) {
 
 // need to add proficiency and magic checking in here
 fn get_att_adj(player: &Player, hand: u64) -> i8 {
-	let stradj = STAT_BONUSES[player.strength];
-	let dexadj = STAT_BONUSES[player.dexterity];
+	let stradj = STAT_BONUSES[player.strength as usize];
+	let dexadj = STAT_BONUSES[player.dexterity as usize];
 	let mut useadj: i8 = 0_i8;
 	
 	let mut weapon: &Item = &ITEM_ITEM_NONE;
@@ -2831,7 +2834,7 @@ fn get_att_adj(player: &Player, hand: u64) -> i8 {
 	}
 
 	// now adjust for proficiency
-	if player.proficienc
+	// HERE if player.proficienc
 	return useadj;
 }
 
