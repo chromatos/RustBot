@@ -990,7 +990,17 @@ fn command_weather(botconfig: &BotConfig, server: &IrcServer, conn: &Connection,
 		let location: Option<String>;
 		//is checklocation filled in? use it if it is.
 		if checklocation.is_some() {
-			location = checklocation;
+			let count: i32 = conn.query_row("SELECT count(nick) FROM locations WHERE nick = $1", &[&checklocation.clone().unwrap()], |row| {
+					row.get(0)
+			}).unwrap();
+			if count == 1 {
+				location = Some(conn.query_row("SELECT location FROM locations WHERE nick = $1", &[&checklocation.clone().unwrap()], |row| {
+					row.get(0)
+				}).unwrap());
+			}
+			else {
+				location = checklocation;
+			}
 		}
 		else {		
 			let count: i32 = conn.query_row("SELECT count(location) FROM locations WHERE nick = $1", &[nick], |row| {
