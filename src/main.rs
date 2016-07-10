@@ -1231,8 +1231,6 @@ fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: Str
 		return cached.unwrap();
 	}
 
-	let url = format!("http://api.wunderground.com/api/{}/forecast/q/{}.json", wu_key.to_string(), fix_location(&location).to_string());
-
 	let mut dst = Vec::new();
 	{
 		let mut callback = |data: &[u8]| {
@@ -1240,9 +1238,11 @@ fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: Str
 			data.len()
 		};
 		let mut easy = Easy::new();
-		let querybytes = url.clone().into_bytes();
-		let encurl = easy.url_encode(&querybytes[..]);
-		easy.url(encurl.as_str()).unwrap();
+		let encloc = fix_location(&location).to_string();
+		//let querybytes = locstr.clone().into_bytes();
+		//let encloc = easy.url_encode(&querybytes[..]);
+		let url = format!("http://api.wunderground.com/api/{}/forecast/q/{}.json", wu_key.to_string(), encloc.to_string());
+		easy.url(url.as_str()).unwrap();
 		easy.write_function(&mut callback).unwrap();
 		easy.perform().unwrap();
 	
@@ -1286,7 +1286,12 @@ fn fix_location(location: &String) -> String {
 	if comma < location.len() {
 		let location = location.clone();
 		let (city, state) = location.split_at(comma);
-		let citystate = format!("{}/{}", state.trim_left_matches(",").trim(), city.trim()).to_string();
+		let mut easy = Easy::new();
+		let citybytes = city.clone().to_string().into_bytes();
+		let statebytes = state.clone().to_string().into_bytes();
+		let enccity = easy.url_encode(&citybytes[..]);
+		let encstate = easy.url_encode(&statebytes[..]);
+		let citystate = format!("{}/{}", encstate.trim_left_matches(",").trim(), enccity.trim()).to_string();
 		return citystate;
 	}
 	else {
