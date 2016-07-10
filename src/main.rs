@@ -1240,7 +1240,9 @@ fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: Str
 			data.len()
 		};
 		let mut easy = Easy::new();
-		easy.url(url.as_str()).unwrap();
+		let querybytes = url.clone().into_bytes();
+		let encurl = easy.url_encode(&querybytes[..]);
+		easy.url(encurl.as_str()).unwrap();
 		easy.write_function(&mut callback).unwrap();
 		easy.perform().unwrap();
 	
