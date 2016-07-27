@@ -525,6 +525,10 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		*titleres = load_titleres(None);
 		*descres = load_descres(None);
 	}
+	else if noprefix.len() > 6 && &noprefixbytes[..7] == "sammich".as_bytes() {
+		let dome: String = format!("whips up a sammich for {}", &nick);
+		server.send_action(&chan, &dome);
+	}
 }
 
 fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, nick: &String, command: String) {
