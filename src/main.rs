@@ -433,7 +433,8 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 			command = None;
 		}
 		else {
-			command = Some(noprefix[4..].to_string().trim().to_string());
+			
+command = Some(noprefix[4..].to_string().trim().to_string());
 		}
 		command_help(&server, &botconfig, &chan, command);
 	}
@@ -525,10 +526,63 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		*titleres = load_titleres(None);
 		*descres = load_descres(None);
 	}
-	else if noprefix.len() > 6 && &noprefixbytes[..7] == "sammich".as_bytes() {
-		let dome: String = format!("whips up a sammich for {}", &nick);
-		server.send_action(&chan, &dome);
+	else if noprefix.len() > 10 && &noprefixbytes[..11] == "sammichadd ".as_bytes() {
+		if is_abuser(&server, &conn, &chan, &maskonly) {
+			return;
+		}
+		let sammich = noprefix[11..].trim().to_string();
+		command_sammichadd(&server, &botconfig, &conn, &chan, sammich);
 	}
+	else if noprefix.len() > 6 && &noprefixbytes[..7] == "sammich".as_bytes() {
+		command_sammich(&server, &botconfig, &conn, &chan, &nick);
+	}
+}
+
+fn command_sammichadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, sammich: String) {
+	if !sql_table_check(&conn, "sammiches".to_string()) {
+		println!("`sammiches` table not found, creating...");
+		if !sql_table_create(&conn, "sammiches".to_string()) {
+			server.send_privmsg(&chan, "No sammiches table exists and for some reason I cannot create one");
+			return;
+		}
+	}
+	
+	match conn.execute("INSERT INTO sammiches VALUES(NULL, $1)", &[&sammich]) {
+		Err(err) => {
+			println!("{}", err);
+			server.send_privmsg(&chan, "Error writing to sammiches table.");
+			return;
+		},
+		Ok(_) => {
+			let sayme: String = format!("\"{}\" added.", sammich);
+			server.send_privmsg(&chan, &sayme);
+			return;
+		},
+	};
+}
+
+fn command_sammich(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, nick: &String) {
+	if !sql_table_check(&conn, "sammiches".to_string()) {
+		println!("`sammiches` table not found, creating...");
+		if !sql_table_create(&conn, "sammiches".to_string()) {
+			server.send_privmsg(&chan, "No sammiches table exists and for some reason I cannot create one");
+			return;
+		}
+	}
+
+	let check: i32 = conn.query_row("select count(*) from sammiches", &[], |row| {
+		row.get(0)
+	}).unwrap();
+	if check == 0 {
+		server.send_privmsg(&chan, "No sammiches in the database, add some.");
+	}
+
+	let result: String = conn.query_row("select sammich from sammiches order by random() limit 1", &[], |row| {
+		row.get(0)
+	}).unwrap();
+
+	let dome: String = format!("whips up a {} sammich for {}", result, nick);
+	server.send_action(&chan, &dome);
 }
 
 fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, nick: &String, command: String) {
@@ -1190,6 +1244,7 @@ fn sql_get_schema(table: &String) -> String {
 	match &table[..] {
 		"seen" => "CREATE TABLE seen(nick TEXT, hostmask TEXT, channel TEXT, said TEXT, ts UNSIGNED INT(8), action UNSIGNED INT(1) CHECK(action IN(0,1)), primary key(nick, channel) )".to_string(),
 		"smakes" => "CREATE TABLE smakes (id INTEGER PRIMARY KEY AUTOINCREMENT, smake TEXT NOT NULL)".to_string(),
+		"sammiches" => "CREATE TABLE sammiches (id INTEGER PRIMARY KEY AUTOINCREMENT, sammich TEXT NOT NULL)".to_string(),
 		"bot_config" => "CREATE TABLE bot_config(nick TEXT PRIMARY KEY, server TEXT, channel TEXT, perl_file TEXT, prefix TEXT, admin_hostmask TEXT, snpass TEXT, snuser TEXT, cookiefile TEXT, wu_api_key TEXT, google_key text)".to_string(),
 		"locations" => "CREATE TABLE locations(nick TEXT PRIMARY KEY, location TEXT)".to_string(),
 		"bots" => "CREATE TABLE bots(hostmask TEXT PRIMARY KEY NOT NULL)".to_string(),
