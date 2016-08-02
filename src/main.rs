@@ -536,6 +536,15 @@ command = Some(noprefix[4..].to_string().trim().to_string());
 	else if noprefix.len() > 6 && &noprefixbytes[..7] == "sammich".as_bytes() {
 		command_sammich(&server, &botconfig, &conn, &chan, &nick);
 	}
+	else if noprefix.len() > 5 && &noprefixbytes[..] == "nelson".as_bytes() {
+		let message = "HA HA!".to_string();
+		command_say(&server, chan.to_string(), message);
+	}
+	else if noprefix.len() > 7 && &noprefixbytes[..6] == "nelson ".as_bytes() {
+		let target = noprefix[7..].trim().to_string();
+		let message = format!("{}: HA HA!", &target);
+		command_say(&server, chan.to_string(), message);
+	}
 }
 
 fn command_sammichadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, sammich: String) {
