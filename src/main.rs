@@ -540,7 +540,7 @@ command = Some(noprefix[4..].to_string().trim().to_string());
 		let message = "HA HA!".to_string();
 		command_say(&server, chan.to_string(), message);
 	}
-	else if noprefix.len() > 7 && &noprefixbytes[..6] == "nelson ".as_bytes() {
+	else if noprefix.len() > 7 && &noprefixbytes[..7] == "nelson ".as_bytes() {
 		let target = noprefix[7..].trim().to_string();
 		let message = format!("{}: HA HA!", &target);
 		command_say(&server, chan.to_string(), message);
