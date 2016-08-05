@@ -545,8 +545,9 @@ command = Some(noprefix[4..].to_string().trim().to_string());
 		let sammich = noprefix[11..].trim().to_string();
 		command_sammichadd(&server, &botconfig, &conn, &chan, sammich);
 	}
-	else if noprefix.len() > 8 && &noprefixbytes[..8] == "sammich".as_bytes() {
-		command_sammich_alt(&server, &chan, &noprefix[8..].to_string());
+	else if noprefix.len() > 8 && &noprefixbytes[..8] == "sammich ".as_bytes() {
+		command_sammich_alt(&server, &chan, &noprefix[8..].to_string().trim().to_string());
+		return;
 	}
 	else if noprefix.len() > 6 && &noprefixbytes[..7] == "sammich".as_bytes() {
 		command_sammich(&server, &botconfig, &conn, &chan, &nick);
