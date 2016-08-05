@@ -325,6 +325,18 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		}
 		command_quit(server, chan.to_string());
 	}
+	if noprefix.len() > 6 && &noprefixbytes[..7] == "pissoff".as_bytes() {
+		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
+			return;
+		}
+		command_pissoff(server, chan.to_string());
+	}
+	if noprefix.len() > 9 && &noprefixbytes[..10] == "dieinafire".as_bytes() {
+		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
+			return;
+		}
+		command_dieinafire(server, chan.to_string());
+	}
 	else if noprefix.len() > 3 && &noprefixbytes[..4] == "join".as_bytes() {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
@@ -904,6 +916,16 @@ fn command_submit(mut botconfig: &mut BotConfig, mut titleres: &mut Vec<Regex>,m
 
 fn command_quit(server: &IrcServer, chan: String) {
 	server.send_privmsg(&chan, "Your wish is my command...");
+	server.send_quit("");
+}
+
+fn command_pissoff(server: &IrcServer, chan: String) {
+	server.send_privmsg(&chan, "Off I shall piss...");
+	server.send_quit("");
+}
+
+fn command_dieinafire(server: &IrcServer, chan: String) {
+	server.send_action(&chan, "dies a firey death");
 	server.send_quit("");
 }
 
