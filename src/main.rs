@@ -548,6 +548,9 @@ command = Some(noprefix[4..].to_string().trim().to_string());
 	else if noprefix.len() > 6 && &noprefixbytes[..7] == "sammich".as_bytes() {
 		command_sammich(&server, &botconfig, &conn, &chan, &nick);
 	}
+	else if noprefix.len() > 8 && &noprefixbytes[..8] == "sammich".as_bytes() {
+		command_sammich_alt(&server, &chan, &noprefix[8..].to_string());
+	}
 	else if noprefix.len() > 5 && &noprefixbytes[..] == "nelson".as_bytes() {
 		let message = "HA HA!".to_string();
 		command_say(&server, chan.to_string(), message);
@@ -604,6 +607,21 @@ fn command_sammich(server: &IrcServer, botconfig: &BotConfig, conn: &Connection,
 
 	let dome: String = format!("whips up a {} sammich for {}", result, nick);
 	server.send_action(&chan, &dome);
+}
+
+fn command_sammich_alt(server: &IrcServer, chan: &String, target: &String) {
+	if is_nick_here(&server, &chan, &target) {
+		let sneak = format!("sneaks up behind {} and cuts their throat", &target);
+		let makesammich = format!("fixes thinly sliced {}'s corpse sammiches for everyone in {}", &target, &chan);
+		server.send_action(&chan, &sneak.as_str());
+		server.send_action(&chan, &makesammich.as_str());
+		return;
+	}
+	else {
+		let action = format!("looks around but does not see {}", &target);
+		server.send_action(&chan, &action);
+		return;
+	}
 }
 
 fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, nick: &String, command: String) {
@@ -1877,6 +1895,20 @@ fn is_ns_faker(server: &IrcServer, nick: &String) -> bool {
 	return false;
 }
 
+fn is_nick_here(server: &IrcServer, chan: &String, nick: &String) -> bool {
+	let nicklist = server.list_users(&chan.as_str());
+	if nicklist.is_none() {
+		println!("got NONE for server.list_users('{}')", &chan);
+		return false;
+	}
+	for user in nicklist.unwrap() {
+		if &user.get_nickname() == &nick.as_str() {
+			return true;
+		}
+	}
+	return false;
+}
+
 // Begin DnD code
 fn dnd_control(conn: &Connection, msg: &String) {
 	let sekrit = "jigglyboobs".to_string(); // This needs to come from botconfig
@@ -2221,10 +2253,6 @@ fn is_class_set(conn: &Connection, nick: &String) -> bool {
 
 	false
 }
-
-
-
-
 
 
 
