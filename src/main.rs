@@ -1975,11 +1975,35 @@ fn get_raw_feed(feed: &String) -> String {
 
 fn get_feed_title(feed: String) -> String {
 	let feedstr = feed.as_str();
-	
-	let parsed = feedstr.parse::<Feed>().unwrap();
-	println!("{:?}", parsed.title);
+	if is_atom(&feedstr) {
+		let parsed = feedstr.parse::<Feed>().unwrap();
+		return parsed.title.to_string();
+	}
+	else if is_rss2(&feedstr) {
+		let parsed = feedstr.parse::<Rss>().unwrap();
+		return parsed.title.to_string();
+	}
+	else {
+		return "Unknown feed type".to_string();
+	}
+	//let parsed = feedstr.parse::<Feed>().unwrap();
+	//println!("{:?}", parsed.title);
 	//return parsed.Channel.title.to_string();
-	return "foo".to_string();
+	//return "foo".to_string();
+}
+
+fn is_atom(feedstr: &str) -> bool {
+	let re = Regex::new(r"xmlns=\S+Atom").unwrap();
+	if re.is_match(feedstr) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+fn is_rss2(feedstr: &str) -> bool {
+	false
 }
 
 // Begin DnD code
