@@ -11,6 +11,8 @@ extern crate regex;
 extern crate time;
 extern crate rand;
 extern crate crypto;
+extern crate rss;
+extern crate atom_syndication;
 
 use std::env;
 use std::thread;
@@ -30,6 +32,8 @@ use rusqlite::Connection;
 use rand::Rng;
 use self::crypto::digest::Digest;
 use self::crypto::sha2::Sha512;
+use rss::Rss;
+use atom_syndication::Feed;
 
 #[derive(Debug)]
 struct BotConfig {
@@ -445,8 +449,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 			command = None;
 		}
 		else {
-			
-command = Some(noprefix[4..].to_string().trim().to_string());
+			command = Some(noprefix[4..].to_string().trim().to_string());
 		}
 		command_help(&server, &botconfig, &chan, command);
 	}
@@ -561,6 +564,42 @@ command = Some(noprefix[4..].to_string().trim().to_string());
 		let message = format!("{}: HA HA!", &target);
 		command_say(&server, chan.to_string(), message);
 	}
+	else if noprefix.len() == 7 && &noprefixbytes[..] == "feedadd".as_bytes() {
+		command_help(&server, &botconfig, &chan, Some("feedadd".to_string()));
+	}
+	else if noprefix.len() > 8 && &noprefixbytes[..7] == "feedadd ".as_bytes() {
+		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
+			return;
+		}
+		let feed_url = noprefix[7..].to_string().trim().to_string();
+		command_feedadd(&server, &botconfig, &conn, &chan, feed_url);
+	}
+}
+
+fn command_feedadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, feed_url: String) {
+	if !sql_table_check(&conn, "feeds".to_string()) {
+		println!("`feeds` table not found, creating...");
+		if !sql_table_create(&conn, "feeds".to_string()) {
+			server.send_privmsg(&chan, "No feeds table exists and for some reason I cannot create one");
+			return;
+		}
+	}
+
+	let raw_feed = get_raw_feed(&feed_url);
+	let feed_title = get_feed_title(raw_feed);
+	
+	match conn.execute("INSERT INTO feeds (title, address, frequency, lastchecked) VALUES($1, $2, 15, datetime('now', '-16 minutes'))", &[&feed_title, &feed_url]) {
+		Err(err) => {
+			println!("{}", err);
+			server.send_privmsg(&chan, "Error writing to feeds table.");
+			return;
+		},
+		Ok(_) => {
+			let sayme: String = format!("\"{}\" added.", feed_url);
+			server.send_privmsg(&chan, &sayme);
+			return;
+		},
+	};
 }
 
 fn command_sammichadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, sammich: String) {
@@ -1302,6 +1341,8 @@ fn sql_get_schema(table: &String) -> String {
 		"admins" => "CREATE TABLE admins(hostmask PRIMARY KEY NOT NULL)".to_string(),
 		"test" => "CREATE TABLE test(hostmask PRIMARY KEY NOT NULL)".to_string(),
 		"messages" => "CREATE TABLE messages(sender TEXT, recipient TEXT, message TEXT, ts UNSIGNED INT(8))".to_string(),
+		"feeds" => "CREATE TABLE feeds(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, address TEXT NOT NULL, frequency INTEGER, lastchecked TEXT)".to_string(),
+		"feed_items" => "CREATE TABLE feed_items(feed_id INTEGER, md5sum TEXT, PRIMARY KEY (feed_id, md5sum))".to_string(),
 		_ => "".to_string(),
 	}
 }
@@ -1908,6 +1949,35 @@ fn is_nick_here(server: &IrcServer, chan: &String, nick: &String) -> bool {
 		}
 	}
 	return false;
+}
+
+fn get_raw_feed(feed: &String) -> String {
+	let mut dst = Vec::new();
+	{
+		let mut easy = Easy::new();
+		let url = feed.clone();
+		easy.url(url.as_str()).unwrap();
+		easy.write_function(|data: &[u8]| {
+			dst.extend_from_slice(data);
+			data.len()
+		});
+		easy.fail_on_error(true);
+		easy.perform().unwrap();
+
+		if easy.response_code().unwrap_or(999) != 200 {
+			println!("got http response code {}", easy.response_code().unwrap_or(999));
+			return "Something borked, check the logs.".to_string();
+		}
+	}
+	let feed_data = str::from_utf8(&dst[..]).unwrap();
+	return feed_data.to_string();
+}
+
+fn get_feed_title(feed: String) -> String {
+	let parsed = feed.as_str().parse::<Rss>().unwrap();
+	println!("{:?}", parsed);
+	//return parsed.Channel.title.to_string();
+	return "foo".to_string();
 }
 
 // Begin DnD code
