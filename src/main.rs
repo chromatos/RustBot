@@ -567,7 +567,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 	else if noprefix.len() == 7 && &noprefixbytes[..] == "feedadd".as_bytes() {
 		command_help(&server, &botconfig, &chan, Some("feedadd".to_string()));
 	}
-	else if noprefix.len() > 8 && &noprefixbytes[..7] == "feedadd ".as_bytes() {
+	else if noprefix.len() > 8 && &noprefixbytes[..8] == "feedadd ".as_bytes() {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
@@ -1974,8 +1974,10 @@ fn get_raw_feed(feed: &String) -> String {
 }
 
 fn get_feed_title(feed: String) -> String {
-	let parsed = feed.as_str().parse::<Rss>().unwrap();
-	println!("{:?}", parsed);
+	let feedstr = feed.as_str();
+	
+	let parsed = feedstr.parse::<Feed>().unwrap();
+	println!("{:?}", parsed.title);
 	//return parsed.Channel.title.to_string();
 	return "foo".to_string();
 }
