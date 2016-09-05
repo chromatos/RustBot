@@ -1331,7 +1331,7 @@ fn get_help(prefix: &String, command: Option<String>) -> String {
 		"g" => format!("google search. {}g <search query>", prefix),
 		"sammich" => format!("no need for sudo..."),
 		"sammichadd" => format!("add a sammich to the db. {}sammichadd <type of sammich>", prefix),
-		"say" => format!("{}say <channel/nick> <stuff>", prefix).
+		"say" => format!("{}say <channel/nick> <stuff>", prefix),
 		"pissoff" => format!("alias for {}quit", prefix),
 		"dieinafire" => format!("alias for {}quit", prefix),
 		"quit" => format!("pretty self-explanatory", prefix),
