@@ -587,6 +587,10 @@ fn command_feedadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection,
 
 	let raw_feed = get_raw_feed(&feed_url);
 	let feed_title = get_feed_title(raw_feed);
+	if &feed_title[..] == "Unknown feed type" {
+		server.send_privmsg(&chan, "Unknown feed type. RSS v1.0 maybe?");
+		return;
+	}
 	
 	match conn.execute("INSERT INTO feeds (title, address, frequency, lastchecked) VALUES($1, $2, 15, datetime('now', '-16 minutes'))", &[&feed_title, &feed_url]) {
 		Err(err) => {
@@ -1981,7 +1985,7 @@ fn get_feed_title(feed: String) -> String {
 	}
 	else if is_rss2(&feedstr) {
 		let parsed = feedstr.parse::<Rss>().unwrap();
-		return parsed.title.to_string();
+		return parsed.0.title.to_string();
 	}
 	else {
 		return "Unknown feed type".to_string();
@@ -2003,7 +2007,13 @@ fn is_atom(feedstr: &str) -> bool {
 }
 
 fn is_rss2(feedstr: &str) -> bool {
-	false
+	let re = Regex::new(r"<rss.*?version=.2\.0.").unwrap();
+	if re.is_match(feedstr) {
+		return true;
+	}
+	else {
+		return false;
+	}
 }
 
 // Begin DnD code
