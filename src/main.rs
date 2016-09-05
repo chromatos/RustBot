@@ -1334,7 +1334,7 @@ fn get_help(prefix: &String, command: Option<String>) -> String {
 		"say" => format!("{}say <channel/nick> <stuff>", prefix),
 		"pissoff" => format!("alias for {}quit", prefix),
 		"dieinafire" => format!("alias for {}quit", prefix),
-		"quit" => format!("pretty self-explanatory", prefix),
+		"quit" => format!("pretty self-explanatory"),
 		"reloadregexes" => format!("reloads the regexes for matching title and description of a page for {}submit from disk", prefix),
 		"nelson" => format!("{}nelson <with or without a nick>", prefix),
 		_ => format!("{}{} is not a currently implemented command", prefix, inside),
