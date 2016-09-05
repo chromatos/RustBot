@@ -586,7 +586,7 @@ fn command_feedadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection,
 	}
 
 	let raw_feed = get_raw_feed(&feed_url);
-	let feed_title = get_feed_title(raw_feed);
+	let feed_title = get_feed_title(&raw_feed);
 	if &feed_title[..] == "Unknown feed type" {
 		server.send_privmsg(&chan, "Unknown feed type. RSS v1.0 maybe?");
 		return;
@@ -1306,7 +1306,7 @@ fn save_msg(conn: &Connection, fromwho: &String, tellwho: String, tellwhat: Stri
 
 fn get_help(prefix: &String, command: Option<String>) -> String {
 	if command.is_none() {
-		return "Commands: help, weatheradd, weather, submit, seen, smake, smakeadd, youtube, abuser, bot, admin, socialist, roll, bnk, join, part, tell, klingon, g".to_string();
+		return "Commands: help, weatheradd, weather, submit, seen, smake, smakeadd, youtube, abuser, bot, admin, socialist, roll, bnk, join, part, tell, klingon, g, sammich, sammichadd, say, pissoff, dieinafire, quit, nelson".to_string();
 	}
 	let inside = command.unwrap();
 	match &inside[..] {
@@ -1329,6 +1329,14 @@ fn get_help(prefix: &String, command: Option<String>) -> String {
 		"tell" => format!("{}tell <nick> <message>", prefix),
 		"klingon" => format!("translate something to klingon. {}klingon <phrase>", prefix),
 		"g" => format!("google search. {}g <search query>", prefix),
+		"sammich" => format!("no need for sudo..."),
+		"sammichadd" => format!("add a sammich to the db. {}sammichadd <type of sammich>", prefix),
+		"say" => format!("{}say <channel/nick> <stuff>", prefix).
+		"pissoff" => format!("alias for {}quit", prefix),
+		"dieinafire" => format!("alias for {}quit", prefix),
+		"quit" => format!("pretty self-explanatory", prefix),
+		"reloadregexes" => format!("reloads the regexes for matching title and description of a page for {}submit from disk", prefix),
+		"nelson" => format!("{}nelson <with or without a nick>", prefix),
 		_ => format!("{}{} is not a currently implemented command", prefix, inside),
 	}
 }
@@ -1977,7 +1985,7 @@ fn get_raw_feed(feed: &String) -> String {
 	return feed_data.to_string();
 }
 
-fn get_feed_title(feed: String) -> String {
+fn get_feed_title(feed: &String) -> String {
 	let feedstr = feed.as_str();
 	if is_atom(&feedstr) {
 		let parsed = feedstr.parse::<Feed>().unwrap();
@@ -1990,10 +1998,6 @@ fn get_feed_title(feed: String) -> String {
 	else {
 		return "Unknown feed type".to_string();
 	}
-	//let parsed = feedstr.parse::<Feed>().unwrap();
-	//println!("{:?}", parsed.title);
-	//return parsed.Channel.title.to_string();
-	//return "foo".to_string();
 }
 
 fn is_atom(feedstr: &str) -> bool {
