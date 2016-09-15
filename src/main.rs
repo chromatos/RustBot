@@ -464,6 +464,17 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		let query: String = noprefix[7..].to_string().trim().to_string();
 		command_youtube(&server, &botconfig, &chan, query);
 	}
+	else if noprefix.len() > 1 && &noprefixbytes[..2] == "yt".as_bytes() {
+		if is_abuser(&server, &conn, &chan, &maskonly) {
+			return;
+		}
+		if noprefix.len() < 4 {
+			server.send_privmsg(&chan, get_help(&botconfig.prefix, Some("youtube".to_string())).as_str());
+			return;
+		}
+		let query: String = noprefix[2..].to_string().trim().to_string();
+		command_youtube(&server, &botconfig, &chan, query);
+	}
 	else if noprefix.len() > 8 && &noprefixbytes[..9] == "socialist".as_bytes() {
 		
 		server.send_privmsg(&chan, format!("{}, you're a socialist!", &noprefix[9..].trim()).as_str());
