@@ -1410,6 +1410,17 @@ fn cache_prune(mut cache: &mut Vec<CacheEntry>) {
 
 fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: String) -> String {
 	let cached = cache_get(&mut wucache, &location);
+	// Fixed results
+	match &location[..] {
+		"uranus" => return "98.6F and windy.".to_string(),
+		"Uranus" => return "98.6F and windy.".to_string(),
+		"Washington, DC" => return "Plenty of hot air with frequent showers of bullshit.".to_string(),
+		"washington, dc" => return "Plenty of hot air with frequent showers of bullshit.".to_string(),
+		"Washington, D.C." => return "Plenty of hot air with frequent showers of bullshit.".to_string(),
+		"crutchy's mom" => return "Hot like pizza supper!".to_string(),
+		_ => {},
+	}
+	// End fixed results
 	if cached.is_some() {
 		return cached.unwrap();
 	}
@@ -1422,8 +1433,6 @@ fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: Str
 		};
 		let mut easy = Easy::new();
 		let encloc = fix_location(&location).to_string();
-		//let querybytes = locstr.clone().into_bytes();
-		//let encloc = easy.url_encode(&querybytes[..]);
 		let url = format!("http://api.wunderground.com/api/{}/forecast/q/{}.json", wu_key.to_string(), encloc.to_string());
 		easy.url(url.as_str()).unwrap();
 		easy.write_function(&mut callback).unwrap();
@@ -1436,14 +1445,6 @@ fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: Str
 
 
 	let json = str::from_utf8(&dst[..]).unwrap();
-	//return page.to_string().trim().to_string();
-
-	/*let resp = http::handle().get(url).exec().unwrap();
-	if resp.get_code() != 200 {
-		return format!("got http response code {}", resp.get_code()).to_string();
-	}
-	let json = str::from_utf8(resp.get_body()).unwrap();*/
-
 	let jsonthing = Json::from_str(json).unwrap();
 	let forecast;
 	if jsonthing.find_path(&["forecast", "txt_forecast", "forecastday" ]).is_some() {
