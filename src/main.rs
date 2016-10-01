@@ -24,6 +24,7 @@ use std::fs::OpenOptions;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc;
 use std::time::Duration;
+use std::i64;
 use regex::Regex;
 use curl::easy::{Easy, List};
 use irc::client::prelude::*;
@@ -127,8 +128,9 @@ fn main() {
 		exit(0);
 	}
 	let thisbot = args[1].clone();
-	let wucache: Vec<CacheEntry> = vec![];
+	let mut wucache: Vec<CacheEntry> = vec![];
 	let conn = Connection::open("/home/bob/etc/snbot/usersettings.db").unwrap();
+	prime_weather_cache(&conn, &mut wucache);
 	let botconfig = conn.query_row("SELECT nick, server, channel, prefix, admin_hostmask, snpass, snuser, cookiefile, wu_api_key, google_key, bing_key, g_cse_id FROM bot_config WHERE nick = ?", &[&thisbot], |row| {
 			BotConfig {
 				nick: row.get(0),
@@ -585,6 +587,19 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		let feed_url = noprefix[7..].to_string().trim().to_string();
 		command_feedadd(&server, &botconfig, &conn, &chan, feed_url);
 	}
+	else if noprefix.len() == 11 && &noprefixbytes[..] == "fakeweather".as_bytes() {
+		command_help(&server, &botconfig, &chan, Some("fakeweather".to_string()));
+	}
+	else if noprefix.len() > 10 && &noprefixbytes[..11] == "fakeweather".as_bytes() {
+                if is_abuser(&server, &conn, &chan, &maskonly) {
+                        return;
+                }
+                if noprefix.trim().len() < 13 {
+                        return;
+                }
+                let what: String = noprefix[11..].to_string().trim().to_string();
+                command_fake_weather_add(&server, &conn, &chan, what, &mut wucache);
+        }
 }
 
 fn command_feedadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, feed_url: String) {
@@ -1124,6 +1139,34 @@ fn command_smakeadd(server: &IrcServer, conn: &Connection, chan: &String, what: 
 	};
 }
 
+fn command_fake_weather_add(server: &IrcServer, conn: &Connection, chan: &String, what: String, mut wucache: &mut Vec<CacheEntry>) {
+	let mut colon = what.find(':').unwrap_or(what.len());
+	if colon == what.len() {
+		return;
+	}
+	let location: String = what[..colon].to_string();
+	colon += 1;
+	let weather: String = what[colon..].to_string().trim().to_string();
+	match conn.execute("INSERT INTO fake_weather VALUES ($1, $2)", &[&location, &weather]) {
+		Err(err) => {
+                        println!("{}", err);
+                        server.send_privmsg(&chan, "Error writing to fake_weather table.");
+                        return;
+                },
+                Ok(_) => {
+			let entry: CacheEntry = CacheEntry {
+        	                age: std::i64::MAX,
+	                        location: location.clone(),
+                        	weather: weather.clone(),
+                	};
+			wucache.push(entry);
+                        let sayme: String = format!("\"{}\" added.", location);
+                        server.send_privmsg(&chan, &sayme);
+                        return;
+                },
+	};
+}
+
 fn command_weatheradd(server: &IrcServer, conn: &Connection, nick: &String, chan: &String, checklocation: String) {
 	
 	if !sql_table_check(&conn, "locations".to_string()) {
@@ -1179,11 +1222,11 @@ fn command_weather(botconfig: &BotConfig, server: &IrcServer, conn: &Connection,
 		}
 		
 		match location {
-			Some(var) =>	weather = get_weather(&mut wucache, &botconfig.wu_key, var),
+			Some(var) =>	weather = get_weather(&mut wucache, &botconfig.wu_key, var.trim().to_string()),
 			None => weather = format!("No location found for {}", nick).to_string(),
 		};
 
-		server.send_privmsg(&chan, &weather);
+		server.send_privmsg(&chan, &weather.trim().to_string());
 		return;
 }
 
@@ -1247,6 +1290,40 @@ fn sql_table_create(conn: &Connection, table: String) -> bool {
 	};
 }
 
+fn prime_weather_cache(conn: &Connection, mut wucache: &mut Vec<CacheEntry>) {
+	let table = "fake_weather".to_string();
+	if !sql_table_check(&conn, table.clone()) {
+                if !sql_table_create(&conn, table.clone()) {
+                        println!("Could not create table 'fake_weather'!");
+			return;
+                }
+		return;
+        }
+	
+	let mut statement = format!("SELECT count(*) FROM {}", &table);
+        let result: i32 = conn.query_row(statement.as_str(), &[], |row| {
+                        row.get(0)
+        }).unwrap();
+        if result == 0 {
+                return;
+        }
+
+	statement = format!("SELECT * from {}", &table);
+	let mut stmt = conn.prepare(statement.as_str()).unwrap();
+	let mut allrows = stmt.query_map(&[], |row| {
+		CacheEntry {
+                	age: std::i64::MAX,
+	                location: row.get(0),
+        	        weather: row.get(1),
+		}
+	}).unwrap();
+
+	for entry in allrows {
+		let thisentry = entry.unwrap();
+		wucache.push(thisentry);
+	}
+}
+
 fn check_messages(conn: &Connection, nick: &String) -> bool {
 	let table = "messages".to_string();
 	if !sql_table_check(&conn, table.clone()) {
@@ -1265,7 +1342,6 @@ fn check_messages(conn: &Connection, nick: &String) -> bool {
 fn deliver_messages(server: &IrcServer, conn: &Connection, nick: &String) {
 	struct Row {
 		sender: String,
-		//recipient: String,
 		message: String,
 		ts: i64
 	};
@@ -1274,7 +1350,6 @@ fn deliver_messages(server: &IrcServer, conn: &Connection, nick: &String) {
 	let mut allrows = stmt.query_map(&[], |row| {
 		Row {
 			sender: row.get(0),
-			//recipient: row.get(1),
 			message: row.get(2),
 			ts: row.get(3)
 		}
@@ -1366,6 +1441,7 @@ fn sql_get_schema(table: &String) -> String {
 		"messages" => "CREATE TABLE messages(sender TEXT, recipient TEXT, message TEXT, ts UNSIGNED INT(8))".to_string(),
 		"feeds" => "CREATE TABLE feeds(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, address TEXT NOT NULL, frequency INTEGER, lastchecked TEXT)".to_string(),
 		"feed_items" => "CREATE TABLE feed_items(feed_id INTEGER, md5sum TEXT, PRIMARY KEY (feed_id, md5sum))".to_string(),
+		"fake_weather" => "CREATE TABLE fake_weather(location TEXT PRIMARY KEY NOT NULL, forecast TEXT NOT NULL)".to_string(),
 		_ => "".to_string(),
 	}
 }
@@ -1374,8 +1450,8 @@ fn cache_push(mut cache: &mut Vec<CacheEntry>, location: &String, weather: &Stri
 	cache_prune(&mut cache);
 	let entry = CacheEntry {
 		age: time::now_utc().to_timespec().sec,
-		location: location.to_string().clone(),
-		weather: weather.to_string().clone(),
+		location: location.to_string().clone().to_lowercase(),
+		weather: weather.to_string().clone().to_lowercase(),
 	};
 	cache.push(entry);
 	return;
@@ -1387,7 +1463,7 @@ fn cache_dump(cache: Vec<CacheEntry>) {
 
 fn cache_get(mut cache: &mut Vec<CacheEntry>, location: &String) -> Option<String> {
 	cache_prune(&mut cache);
-	let position: Option<usize> = cache.iter().position(|ref x| x.location == location.to_string());
+	let position: Option<usize> = cache.iter().position(|ref x| x.location == location.to_string().clone().to_lowercase());
 	if position.is_some() {
 		let weather: &String = &cache[position.unwrap()].weather;
 		return Some(weather.to_string().clone());
@@ -1410,17 +1486,6 @@ fn cache_prune(mut cache: &mut Vec<CacheEntry>) {
 
 fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: String) -> String {
 	let cached = cache_get(&mut wucache, &location);
-	// Fixed results
-	match &location[..] {
-		"uranus" => return "98.6F and windy.".to_string(),
-		"Uranus" => return "98.6F and windy.".to_string(),
-		"Washington, DC" => return "Plenty of hot air with frequent showers of bullshit.".to_string(),
-		"washington, dc" => return "Plenty of hot air with frequent showers of bullshit.".to_string(),
-		"Washington, D.C." => return "Plenty of hot air with frequent showers of bullshit.".to_string(),
-		"crutchy's mom" => return "Hot like pizza supper!".to_string(),
-		_ => {},
-	}
-	// End fixed results
 	if cached.is_some() {
 		return cached.unwrap();
 	}
