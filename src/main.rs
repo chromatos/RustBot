@@ -590,7 +590,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 	else if noprefix.len() == 11 && &noprefixbytes[..] == "fakeweather".as_bytes() {
 		command_help(&server, &botconfig, &chan, Some("fakeweather".to_string()));
 	}
-	else if noprefix.len() > 10 && &noprefixbytes[..11] == "fakeweather".as_bytes() {
+	else if noprefix.len() > 10 && &noprefixbytes[..11] == "fakeweather ".as_bytes() {
                 if is_abuser(&server, &conn, &chan, &maskonly) {
                         return;
                 }
@@ -599,6 +599,19 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
                 }
                 let what: String = noprefix[11..].to_string().trim().to_string();
                 command_fake_weather_add(&server, &conn, &chan, what, &mut wucache);
+        }
+	else if noprefix.len() == 12 && &noprefixbytes[..] == "weatheralias".as_bytes() {
+                command_help(&server, &botconfig, &chan, Some("weatheralias".to_string()));
+        }
+        else if noprefix.len() > 12 && &noprefixbytes[..13] == "weatheralias ".as_bytes() {
+                if is_abuser(&server, &conn, &chan, &maskonly) {
+                        return;
+                }
+                if noprefix.trim().len() < 16 {
+                        return;
+                }
+                let what: String = noprefix[12..].to_string().trim().to_string();
+                command_weather_alias(&server, &conn, &nick, &chan, what);
         }
 }
 
@@ -1167,6 +1180,36 @@ fn command_fake_weather_add(server: &IrcServer, conn: &Connection, chan: &String
 	};
 }
 
+fn command_weatheralias(server: &IrcServer, conn: &Connection, nick: &String, chan: &String, walias: String) {
+	if !sql_table_check(&conn, "weather_aliases".to_string()) {
+                println!("weather_aliases table not found, creating...");
+                if !sql_table_create(&conn, "weather_aliases".to_string()) {
+                        server.send_privmsg(&chan, "No weather_aliases table exists and for some reason I cannot create one");
+                        return;
+                }
+        }
+	
+	let mut colon = walias.find(':').unwrap_or(walias.len());
+	if colon == walias.len() {
+		return;
+	}
+	let flocation = walias[..colon].trim().to_string();
+	colon += 1;
+	let rlocation = walias[colon..].trim().to_string();
+	match conn.execute("INSERT INTO weather_aliases VALUES ($1, $2 )", &[&flocation, &rlocation]) {
+		Err(err) => {
+                        println!("{}", err);
+                        server.send_privmsg(&chan, "Error writing to weather_aliases table.");
+                        return;
+                },
+                Ok(_) => {
+                        let sayme: String = format!("\"{}\" added.", flocation);
+                        server.send_privmsg(&chan, &sayme);
+                        return;
+                },
+	};
+}
+
 fn command_weatheradd(server: &IrcServer, conn: &Connection, nick: &String, chan: &String, checklocation: String) {
 	
 	if !sql_table_check(&conn, "locations".to_string()) {
@@ -1399,6 +1442,8 @@ fn get_help(prefix: &String, command: Option<String>) -> String {
 		"help" => format!("Yes, recursion is nifty. Now piss off."),
 		"weatheradd" => format!("{}weatheradd <zip> or {}weatheradd city, st", prefix, prefix),
 		"weather" => format!("{}weather <zip>, {}weather city, st, or just {}weather if you have saved a location with {}weatheradd", prefix, prefix, prefix, prefix),
+		"fakeweather" => format!("{}fakeweather <fakelocation>:<fake weather>", prefix),
+		"weatheralias" => format!("{}weatheralias <alias>:<location>", prefix),
 		"submit" => format!("{}submit <url> or {}submit <url> <what you have to say about it>", prefix, prefix),
 		"seen" => format!("{}seen <nick>", prefix),
 		"smake" => format!("{}smake <someone>", prefix),
@@ -1442,6 +1487,7 @@ fn sql_get_schema(table: &String) -> String {
 		"feeds" => "CREATE TABLE feeds(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, address TEXT NOT NULL, frequency INTEGER, lastchecked TEXT)".to_string(),
 		"feed_items" => "CREATE TABLE feed_items(feed_id INTEGER, md5sum TEXT, PRIMARY KEY (feed_id, md5sum))".to_string(),
 		"fake_weather" => "CREATE TABLE fake_weather(location TEXT PRIMARY KEY NOT NULL, forecast TEXT NOT NULL)".to_string(),
+		"weather_aliases" => "CREATE TABLE weather_aliases(fake_location TEXT PRIMARY KEY NOT NULL, real_location TEXT NOT NULL)".to_string(),
 		_ => "".to_string(),
 	}
 }
@@ -1485,6 +1531,7 @@ fn cache_prune(mut cache: &mut Vec<CacheEntry>) {
 }
 
 fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: String) -> String {
+	// check here for aliases
 	let cached = cache_get(&mut wucache, &location);
 	if cached.is_some() {
 		return cached.unwrap();
