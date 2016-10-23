@@ -387,12 +387,13 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		let checklocation: String = noprefix[10..].trim().to_string();
 		command_weatheradd(&server, &conn, &nick, &chan, checklocation);
 	}
-	else if noprefix.len() > 6 && &noprefixbytes[..7] == "weather".as_bytes() {
+	else if (noprefix.len() > 6 && &noprefixbytes[..] == "weather".as_bytes()) ||
+		(noprefix.len() > 7 && &noprefixbytes[..8] == "weather ".as_bytes()) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
 		let checklocation: Option<String>;
-		if noprefix.trim().len() == 7 {
+		if noprefix.len() == 7 {
 			checklocation = None;
 		}
 		else {
@@ -611,7 +612,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
                         return;
                 }
                 let what: String = noprefix[12..].to_string().trim().to_string();
-                command_weather_alias(&server, &conn, &nick, &chan, what);
+                command_weather_alias(&botconfig, &server, &conn, &nick, &chan, what);
         }
 }
 
@@ -1180,7 +1181,7 @@ fn command_fake_weather_add(server: &IrcServer, conn: &Connection, chan: &String
 	};
 }
 
-fn command_weatheralias(server: &IrcServer, conn: &Connection, nick: &String, chan: &String, walias: String) {
+fn command_weather_alias(botconfig: &BotConfig, server: &IrcServer, conn: &Connection, nick: &String, chan: &String, walias: String) {
 	if !sql_table_check(&conn, "weather_aliases".to_string()) {
                 println!("weather_aliases table not found, creating...");
                 if !sql_table_create(&conn, "weather_aliases".to_string()) {
@@ -1191,12 +1192,26 @@ fn command_weatheralias(server: &IrcServer, conn: &Connection, nick: &String, ch
 	
 	let mut colon = walias.find(':').unwrap_or(walias.len());
 	if colon == walias.len() {
+		command_help(&server, &botconfig, &chan, Some("weatheralias".to_string()));
 		return;
 	}
 	let flocation = walias[..colon].trim().to_string();
 	colon += 1;
 	let rlocation = walias[colon..].trim().to_string();
-	match conn.execute("INSERT INTO weather_aliases VALUES ($1, $2 )", &[&flocation, &rlocation]) {
+	if flocation.len() < 3 || rlocation.len() < 3 {
+		command_help(&server, &botconfig, &chan, Some("weatheralias".to_string()));
+		return;
+	}
+	// make sure an alias doesn't stomp on a saved person/place name
+	let is_user: i32 = conn.query_row("SELECT count(nick) FROM locations WHERE nick = $1", &[&flocation], |row| {
+		row.get(0)
+	}).unwrap();
+	if is_user != 0 {
+		let sayme = format!("{} is someone's nick, jackass.", &flocation);
+		server.send_privmsg(&chan, &sayme);
+		return;
+	}
+	match conn.execute("REPLACE INTO weather_aliases VALUES ($1, $2 )", &[&flocation, &rlocation]) {
 		Err(err) => {
                         println!("{}", err);
                         server.send_privmsg(&chan, "Error writing to weather_aliases table.");
@@ -1235,19 +1250,32 @@ fn command_weatheradd(server: &IrcServer, conn: &Connection, nick: &String, chan
 
 fn command_weather(botconfig: &BotConfig, server: &IrcServer, conn: &Connection, mut wucache: &mut Vec<CacheEntry>, nick: &String, chan: &String, checklocation: Option<String>) {
 		let weather: String;
+		let mut unaliasedlocation = checklocation;
 		let location: Option<String>;
-		//is checklocation filled in? use it if it is.
-		if checklocation.is_some() {
-			let count: i32 = conn.query_row("SELECT count(nick) FROM locations WHERE nick = $1", &[&checklocation.clone().unwrap()], |row| {
+
+		// unalias unaliasedlocation if it is aliased
+		if unaliasedlocation.is_some() {
+			let is_alias: i32 = conn.query_row("SELECT count(fake_location) FROM weather_aliases WHERE fake_location = $1", &[&unaliasedlocation.clone().unwrap()], |row| {
+				row.get(0)
+			}).unwrap();
+			if is_alias == 1 {
+				unaliasedlocation = Some(conn.query_row("SELECT real_location FROM weather_aliases WHERE fake_location = $1", &[&unaliasedlocation.clone().unwrap()], |row| {
+					row.get(0)
+				}).unwrap());
+			}
+		}
+
+		if unaliasedlocation.is_some() {
+			let count: i32 = conn.query_row("SELECT count(nick) FROM locations WHERE nick = $1", &[&unaliasedlocation.clone().unwrap()], |row| {
 					row.get(0)
 			}).unwrap();
 			if count == 1 {
-				location = Some(conn.query_row("SELECT location FROM locations WHERE nick = $1", &[&checklocation.clone().unwrap()], |row| {
+				location = Some(conn.query_row("SELECT location FROM locations WHERE nick = $1", &[&unaliasedlocation.clone().unwrap()], |row| {
 					row.get(0)
 				}).unwrap());
 			}
 			else {
-				location = checklocation;
+				location = unaliasedlocation;
 			}
 		}
 		else {		
@@ -1531,7 +1559,6 @@ fn cache_prune(mut cache: &mut Vec<CacheEntry>) {
 }
 
 fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: String) -> String {
-	// check here for aliases
 	let cached = cache_get(&mut wucache, &location);
 	if cached.is_some() {
 		return cached.unwrap();
