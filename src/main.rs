@@ -122,7 +122,7 @@ fn main() {
 				go_key: row.get(9),
 				bi_key: row.get(10),
 				cse_id: row.get(11),
-				is_fighting: true,
+				is_fighting: false,
 			}
 		}).unwrap();
 	let mut storables: Storables = Storables {
@@ -144,7 +144,7 @@ fn main() {
 				go_key: row.get(9),
 				bi_key: row.get(10),
 				cse_id: row.get(11),
-				is_fighting: true,
+				is_fighting: false,
 			}
 			}).unwrap(),
 		server: IrcServer::from_config(
@@ -539,9 +539,15 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 			return;
 		}
 		botconfig.is_fighting = true;
-		let target = noprefix[1..].trim().to_string();
+		let target = noprefix[4..].trim().to_string();
 		command_fite(&server, &conn, &chan, &nick, target);
 		botconfig.is_fighting = false;
+	}
+	else if noprefix.len() == 9 && &noprefixbytes[..] == "goodfairy".as_bytes() {
+		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
+                        return;
+                }
+		command_goodfairy(&server, &conn, &chan);
 	}
 	else if &noprefixbytes[..] == "reloadregexes".as_bytes() {
 		*titleres = load_titleres(None);
@@ -606,6 +612,11 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
                 let what: String = noprefix[12..].to_string().trim().to_string();
                 command_weather_alias(&botconfig, &server, &conn, &nick, &chan, what);
         }
+}
+
+fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
+	conn.execute("UPDATE characters SET hp = level * 10", &[]).unwrap();
+	server.send_privmsg(&chan, "The good fairy has come along and revived everyone");
 }
 
 fn command_fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String, target: String) {
@@ -2165,9 +2176,12 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 		rAttacker = &mut oDefender;
 	}
 
+	let oneSecond = Duration::new(1,0);
+
 	// Do combat rounds until someone dies
 	loop {
 		// whoever won init's turn
+		thread::sleep(oneSecond);
 		let mut attackRoll: u8 = roll_once(20_u8);
 		let mut damageRoll: u8 = 0;
 		// Crit
@@ -2197,6 +2211,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 		}
 		// Bail if rDefender is dead
 		if !is_alive(&rDefender) {
+			thread::sleep(oneSecond);
 			rAttacker.level = rAttacker.level + 1;
 			rAttacker.hp = rAttacker.hp + 10;
 			if rDefender.level > 1 {
@@ -2208,6 +2223,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 		}
 		// whoever lost init's turn
 		attackRoll = roll_once(20_u8);
+		thread::sleep(oneSecond);
 		// Crit
 		if attackRoll == 20_u8 {
 			damageRoll = roll_once(8_u8) * 2;
@@ -2235,6 +2251,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 		}
 		// Bail if rAttacker is dead
 		if !is_alive(&rAttacker) {
+			thread::sleep(oneSecond);
 			rDefender.level = rDefender.level + 1;
 			rDefender.hp = rDefender.hp + 10;
 			if rAttacker.level > 1 {
@@ -2279,7 +2296,7 @@ fn character_exists(conn: &Connection, nick: &String) -> bool {
 
 fn create_character(conn: &Connection, nick: &String) {
 	let time: i64 = time::now_utc().to_timespec().sec;
-	conn.execute("INSERT INTO characters(?, 1, 10, 'fist', 'grungy t-shirt', ?)", &[&nick.as_str(), &time]).unwrap();
+	conn.execute("INSERT INTO characters VALUES(?, 1, 10, 'fist', 'grungy t-shirt', ?)", &[&nick.as_str(), &time]).unwrap();
 	return;
 }
 
