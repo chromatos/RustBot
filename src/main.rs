@@ -3,6 +3,7 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(unused_assignments)]
+#![allow(non_snake_case)]
 extern crate curl;
 extern crate irc;
 extern crate rusqlite;
@@ -10,7 +11,7 @@ extern crate rustc_serialize;
 extern crate regex;
 extern crate time;
 extern crate rand;
-extern crate crypto;
+//extern crate crypto;
 extern crate rss;
 extern crate atom_syndication;
 
@@ -31,8 +32,8 @@ use irc::client::prelude::*;
 use rustc_serialize::json::Json;
 use rusqlite::Connection;
 use rand::Rng;
-use self::crypto::digest::Digest;
-use self::crypto::sha2::Sha512;
+//use self::crypto::digest::Digest;
+//use self::crypto::sha2::Sha512;
 use rss::Rss;
 use atom_syndication::Feed;
 
@@ -52,6 +53,7 @@ struct BotConfig {
 	go_key: String,
 	bi_key: String,
 	cse_id: String,
+	is_fighting: bool,
 }
 
 #[derive(Debug)]
@@ -80,46 +82,19 @@ struct Submission {
 	botnick: String,
 }
 
+#[derive(Debug)]
+struct Character {
+	nick: String,
+	level: u64,
+	hp: u64,
+	weapon: String,
+	armor: String,
+	ts: u64,
+	initiative: u8,
+}
+
 const DEBUG: bool = false;
-const ITEM_MONEY: i64 = 1_i64;
-const RACES: &'static [&'static str] = &["human", "highelf", "woodelf", "darkelf", "hilldwarf", "mountaindwarf", "lightfoothalfling", "stouthalfling", "blackdragonborn", "bluedragonborn", "brassdragonborn", "bronzedragonborn", "copperdragonborn", "golddragonborn", "greendragonborn", "reddragonborn", "silverdragonborn", "whitedragonborn", "forestgnome", "rockgnome", "halfelf", "halforc", "tiefling"];
-const CLASSES: &'static [&'static str] = &["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"];
-
-// status effects
-const ABILITY_DARKVISION: u64 = 1_u64;
-const ABILITY_SUPDARKVISION: u64 = 2_u64;
-const ABILITY_DWFRESILIENCE: u64 = 4_u64;
-const ABILITY_DWFCOMBATTRAIN: u64 = 8_u64;
-const ABILITY_DWFTOOLPROF: u64 = 16_u64;
-const ABILITY_DWFTOUGHNESS: u64 = 32_u64;
-const ABILITY_DWFARMTRAIN: u64 = 64_u64;
-const ABILITY_ELFKEENSENS: u64 = 128_u64;
-const ABILITY_ELFFEYANCEST: u64 = 256_u64;
-const ABILITY_ELFCOMBATTRAIN: u64 = 512_u64;
-const ABILITY_ELFCANTRIP: u64 = 1024_u64;
-const ABILITY_ELFMOTW: u64 = 2048_u64;
-const ABILITY_DELFSUNBAD: u64 = 4096_u64;
-const ABILITY_DELFMAGIC: u64 = 8192_u64;
-const ABILITY_DELFWEAPON: u64 = 16384_u64;
-const ABILITY_HFLLUCK: u64 = 32768_u64;
-const ABILITY_HFLBRAVE: u64 = 65536_u64;
-const ABILITY_HFLSTEALTH: u64 = 131072_u64;
-const ABILITY_HFLRESILIENCE: u64 = 262144_u64;
-const ABILITY_DBNFIRE: u64 = 524288_u64;
-const ABILITY_DBNCOLD: u64 = 1048576_u64;
-const ABILITY_DBNACID: u64 = 2097152_u64;
-const ABILITY_DBNLIGHT: u64 = 4194304_u64;
-const ABILITY_DBNPOIS: u64 = 8388608_u64;
-const ABILITY_GNOCUNNING: u64 = 16777216_u64;
-const ABILITY_GNOCANTRIP: u64 = 33554432_u64;
-const ABILITY_HELSKILLPROF: u64 = 67108864_u64;
-const ABILITY_HORMENACE: u64 = 134217728_u64;
-const ABILITY_HORRELEND: u64 = 268435456_u64;
-const ABILITY_HORSAVATKS: u64 = 536870912_u64;
-const ABILITY_TIEFIRERES: u64 = 1073741824_u64;
-const ABILITY_TIECANTRIP: u64 = 2147483648_u64;
-const ABILITY_NONE: u64 = 4294967296_u64;
-
+const ARMOR_CLASS: u8 = 13;
 
 fn main() {
 	let args: Vec<_> = env::args().collect();
@@ -147,6 +122,7 @@ fn main() {
 				go_key: row.get(9),
 				bi_key: row.get(10),
 				cse_id: row.get(11),
+				is_fighting: true,
 			}
 		}).unwrap();
 	let mut storables: Storables = Storables {
@@ -168,6 +144,7 @@ fn main() {
 				go_key: row.get(9),
 				bi_key: row.get(10),
 				cse_id: row.get(11),
+				is_fighting: true,
 			}
 			}).unwrap(),
 		server: IrcServer::from_config(
@@ -221,7 +198,7 @@ fn main() {
 			}
 		});
 	}
-
+	
 	for message in storables.server.iter() {
 		let umessage = message.unwrap();
 		let mut chan: String = "foo".to_string();
@@ -543,13 +520,28 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 	else if noprefix.len() > 2  && &noprefixbytes[..2] == "g ".as_bytes() {
 		let searchstr = noprefix[1..].trim().to_string();
 		command_google(&server, &botconfig, &chan, searchstr);
-	}
+	}/*
 	else if noprefix.len() == 9 && &noprefixbytes[..9] == "character".as_bytes() {
 		command_help(&server, &botconfig, &chan, Some("character".to_string()));
 	}
 	else if noprefix.len() > 9 && &noprefixbytes[..10] == "character ".as_bytes() {
 		let command = noprefix[10..].trim().to_string();
 		command_character(&server, &botconfig, &conn, &chan, &nick, command);
+	}*/
+	else if noprefix.len() == 4 && &noprefixbytes[..] == "fite".as_bytes() {
+		command_help(&server, &botconfig, &chan, Some("fite".to_string()));
+		return;
+	}
+	else if noprefix.len() > 5  && &noprefixbytes[..5] == "fite ".as_bytes() {
+		if botconfig.is_fighting {
+			let msg = format!("There's already a fight going on. Wait your turn.");
+			server.send_privmsg(&chan, &msg);
+			return;
+		}
+		botconfig.is_fighting = true;
+		let target = noprefix[1..].trim().to_string();
+		command_fite(&server, &conn, &chan, &nick, target);
+		botconfig.is_fighting = false;
 	}
 	else if &noprefixbytes[..] == "reloadregexes".as_bytes() {
 		*titleres = load_titleres(None);
@@ -614,6 +606,30 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
                 let what: String = noprefix[12..].to_string().trim().to_string();
                 command_weather_alias(&botconfig, &server, &conn, &nick, &chan, what);
         }
+}
+
+fn command_fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String, target: String) {
+	if is_nick_here(&server, &chan, &target) {
+		if !sql_table_check(&conn, "characters".to_string()) {
+			println!("`characters` table not found, creating...");
+			if !sql_table_create(&conn, "characters".to_string()) {
+				server.send_privmsg(&chan, "No characters table exists and for some reason I cannot create one");
+				return;
+			}
+		}
+		if !character_exists(&conn, &attacker) {
+			create_character(&conn, &attacker);
+		}
+		if !character_exists(&conn, &target) {
+			create_character(&conn, &target);
+		}
+
+		fite(&server, &conn, &chan, &attacker, &target);
+	}
+	else {
+		let err = format!("looks around but doesn't see {}", &target);
+		server.send_action(&chan, &err);
+	}
 }
 
 fn command_feedadd(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, feed_url: String) {
@@ -709,6 +725,7 @@ fn command_sammich_alt(server: &IrcServer, chan: &String, target: &String) {
 }
 
 fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, nick: &String, command: String) {
+	/*
 	if is_ns_faker(&server, &nick) {
 		server.send_privmsg(&chan, "Sorry, you have to be registered and identified with nickserv to play. /ns help");
 		return;
@@ -718,70 +735,6 @@ fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connectio
 
 	if !character_exists(&conn, &nick) && command != "new".to_string() {
 		let msg = format!("You need to register a character first with {}character new.", &botconfig.prefix);
-	}
-	// #character new
-	else if command == "new".to_string() {
-		let stats = roll_stats(&conn, &nick);
-		let statstr = format!("Str: {}, Con: {}, Dex: {}, Int: {}, Wis: {}, Cha: {}", stats[0], stats[1], stats[2], stats[3], stats[4], stats[5]);
-		let msg = format!("Stats rolled ({}), now pick your race then class. {}character race <race> then {}character class <class>. Use 'list' as the race or class to see the availible choices.", statstr, &botconfig.prefix, &botconfig.prefix);
-		server.send_privmsg(&nick, &msg);
-	}
-	// #character race
-	else if command.len() > 4 && &commandbytes[..5] == "race ".as_bytes() {
-		let race = command[5..].trim().to_string();
-		if race.len() < 1 { return; }
-		else if race == "list".to_string() {
-			let races = list_races();
-			let sayme = races.join(", ").to_string();
-			server.send_privmsg(&chan, &sayme);
-		}
-		else if is_race_set(&conn, &nick) {
-			server.send_privmsg(&chan, "You've already picked a race.");
-		}
-		else if race.find(" ").is_some() {
-			server.send_privmsg(&chan, "Stop that.");
-		}
-		else if is_valid_race(&race) {
-			set_race(&conn, &nick, &race);
-			let (strength, con, dex, int, wis, cha, abilitiesi) = conn.query_row("SELECT * FROM players WHERE nick = $1", &[&nick.as_str()], |row| {
-				( row.get(5), row.get(6), row.get(7), row.get(8), row.get(9), row.get(10), row.get::<i64>(11) )
-			}).unwrap_or( (0_i64, 0_i64, 0_i64, 0_i64, 0_i64, 0_i64, 0_i64) );
-			let abilities: u64 = abilitiesi as u64;
-			let abstr: String = read_abilities(abilities);
-			let mut msg = format!("Race for {} set to {}.", &nick, &race);
-			server.send_privmsg(&chan, &msg);
-			msg = format!("Stats now Str: {}, Con: {}, Dex: {}, Int: {}, Wis: {}, Cha: {}. Abilities: {}", &strength, &con, &dex, &int, &wis, &cha, &abstr);
-			server.send_privmsg(&nick, &msg);
-		}
-		else {
-			let msg = format!("'{}' is not a valid race. Use '{}character race list' for valid choices.", &race, &botconfig.prefix);
-			server.send_privmsg(&chan, &msg);
-		}
-	}
-	// #character class
-	else if command.len() > 5 && &commandbytes[..6] == "class ".as_bytes() {
-		let class = command[6..].trim().to_string();
-		if class.len() < 1 { return;}
-		else if class == "list".to_string() {
-			let classes = list_classes();
-			let sayme = classes.join(", ").to_string();
-			server.send_privmsg(&chan, sayme.as_str());
-		}
-		else if is_class_set(&conn, &nick) {
-			server.send_privmsg(&chan, "You've already picked a class.");
-		}
-		else if class.find(" ").is_some() {
-			server.send_privmsg(&chan, "Stop that.");
-		}
-		else if is_valid_class(&class) {
-			set_class(&conn, &nick, &class);
-			let msg = format!("Class for {} set to {}.", &nick, &class);
-			server.send_privmsg(&chan, &msg);
-		}
-		else {
-			let msg = format!("'{}' is not a valid class. Use '{}character class list' for valid choices.", &class, &botconfig.prefix);
-			server.send_privmsg(&chan, &msg);
-		}
 	}
 	// #character info
 	else if command.len() > 3 && &commandbytes[..4] == "info".as_bytes() {
@@ -805,7 +758,7 @@ fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connectio
 			server.send_privmsg(&chan, &msg);
 		}
 	}
-	else { command_help(&server, &botconfig, &chan, Some("character".to_string())); }
+	else { command_help(&server, &botconfig, &chan, Some("character".to_string())); }*/
 	return;
 }
 
@@ -1516,6 +1469,7 @@ fn sql_get_schema(table: &String) -> String {
 		"feed_items" => "CREATE TABLE feed_items(feed_id INTEGER, md5sum TEXT, PRIMARY KEY (feed_id, md5sum))".to_string(),
 		"fake_weather" => "CREATE TABLE fake_weather(location TEXT PRIMARY KEY NOT NULL, forecast TEXT NOT NULL)".to_string(),
 		"weather_aliases" => "CREATE TABLE weather_aliases(fake_location TEXT PRIMARY KEY NOT NULL, real_location TEXT NOT NULL)".to_string(),
+		"characters" => "CREATE TABLE characters(nick TEXT PRIMARY KEY NOT NULL, level UNSIGNED INT(8), hp UNSIGNED INT(8), weapon TEXT NOT NULL DEFAULT 'fist', armor TEXT NOT NULL DEFAULT 'grungy t-shirt', ts UNSIGNED INT(8))".to_string(),
 		_ => "".to_string(),
 	}
 }
@@ -2171,7 +2125,197 @@ fn is_rss2(feedstr: &str) -> bool {
 	}
 }
 
-// Begin DnD code
+// Begin fite code
+// fite(&server, &conn, &chan, &attacker, &target);
+fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String, target: &String) {
+	let mut oAttacker: Character = get_character(&conn, &attacker);
+	let mut oDefender: Character = get_character(&conn, &target);
+	let mut rng = rand::thread_rng();
+	let mut rAttacker: &mut Character;
+	let mut rDefender: &mut Character;
+
+	// Make sure both characters are currently alive
+	if !is_alive(&oAttacker) {
+		let err = format!("How can you fight when you're dead? Try again tomorrow.");
+		server.send_privmsg(&chan, &err);
+		return;
+	}
+	if !is_alive(&oDefender) {
+		let err = format!("{}'s corpse is currently rotting on the ground. Try fighting someone who's alive.", &target);
+		server.send_privmsg(&chan, &err);
+		return;
+	}
+
+	// Roll initiative
+	oAttacker.initiative = roll_once(10_u8);
+	oDefender.initiative = roll_once(10_u8);
+	// No ties
+	while oAttacker.initiative == oDefender.initiative {
+		oAttacker.initiative = roll_once(10_u8);
+		oDefender.initiative = roll_once(10_u8);
+	}
+
+	// Decide who goes first
+	if oAttacker.initiative > oDefender.initiative {
+		rAttacker = &mut oAttacker;
+		rDefender = &mut oDefender;
+	}
+	else {
+		rDefender = &mut oAttacker;
+		rAttacker = &mut oDefender;
+	}
+
+	// Do combat rounds until someone dies
+	loop {
+		// whoever won init's turn
+		let mut attackRoll: u8 = roll_once(20_u8);
+		let mut damageRoll: u8 = 0;
+		// Crit
+		if attackRoll == 20_u8 {
+			damageRoll = roll_once(8_u8) * 2;
+			if damageRoll as u64 > rDefender.hp {
+				damageRoll = rDefender.hp as u8;
+			}
+			rDefender.hp = rDefender.hp - (damageRoll as u64);
+			let msg = format!("{} smites the everlovin crap out of {} with a {}", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon);
+			server.send_privmsg(&chan, &msg);
+		}
+		// Hit
+		else if attackRoll > ARMOR_CLASS {
+			damageRoll = roll_once(8_u8);
+			if damageRoll as u64 > rDefender.hp {
+				damageRoll = rDefender.hp as u8;
+			}
+			rDefender.hp = rDefender.hp - (damageRoll as u64);
+			let msg = format!("{} clobbers {} upside their head with a {}", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon);
+			server.send_privmsg(&chan, &msg);
+		}
+		// Miss
+		else {
+			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rAttacker.nick, &rAttacker.weapon, &rDefender.nick, &rDefender.armor);
+			server.send_privmsg(&chan, &msg);
+		}
+		// Bail if rDefender is dead
+		if !is_alive(&rDefender) {
+			rAttacker.level = rAttacker.level + 1;
+			rAttacker.hp = rAttacker.hp + 10;
+			if rDefender.level > 1 {
+				rDefender.level = rDefender.level - 1;
+			}
+			let deathmsg = format!("{} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
+			server.send_privmsg(&chan, &deathmsg);	
+			break;
+		}
+		// whoever lost init's turn
+		attackRoll = roll_once(20_u8);
+		// Crit
+		if attackRoll == 20_u8 {
+			damageRoll = roll_once(8_u8) * 2;
+			if damageRoll as u64 > rAttacker.hp {
+				damageRoll = rAttacker.hp as u8;
+			}
+			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
+			let msg = format!("{} smites the everlovin crap out of {} with a {}", &rDefender.nick, &rAttacker.nick, &rDefender.weapon);
+			server.send_privmsg(&chan, &msg);
+		}
+		// Hit
+		else if attackRoll > ARMOR_CLASS {
+			damageRoll = roll_once(8_u8);
+			if damageRoll as u64 > rAttacker.hp {
+				damageRoll = rAttacker.hp as u8;
+			}
+			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
+			let msg = format!("{} clobbers {} upside their head with a {}", &rDefender.nick, &rAttacker.nick, &rDefender.weapon);
+			server.send_privmsg(&chan, &msg);
+		}
+		// Miss
+		else {
+			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rDefender.nick, &rDefender.weapon, &rAttacker.nick, &rAttacker.armor);
+			server.send_privmsg(&chan, &msg);
+		}
+		// Bail if rAttacker is dead
+		if !is_alive(&rAttacker) {
+			rDefender.level = rDefender.level + 1;
+			rDefender.hp = rDefender.hp + 10;
+			if rAttacker.level > 1 {
+				rAttacker.level = rAttacker.level - 1;
+			}
+			let deathmsg = format!("{} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
+			server.send_privmsg(&chan, &deathmsg);	
+			break;
+		}
+	}
+	
+	// Save characters
+	save_character(&conn, &rAttacker);
+	save_character(&conn, &rDefender);
+}
+
+fn save_character(conn: &Connection, character: &Character) {
+	let time: i64 = time::now_utc().to_timespec().sec;
+	let level = character.level as i64;
+	let hp = character.hp as i64;
+	conn.execute("UPDATE characters SET level = ?, hp = ?, ts = ? WHERE nick = ?", &[&level, &hp, &time, &character.nick.as_str()]).unwrap();
+}
+
+fn roll_once(sides: u8) -> u8 {
+	let mut rng = rand::thread_rng();
+	let random = rng.gen::<u64>();
+	let roll = ((random % (sides as u64)) + 1) as u8;
+	return roll;
+}
+
+fn character_exists(conn: &Connection, nick: &String) -> bool {
+	let count: i32 = conn.query_row("SELECT count(nick) FROM characters WHERE nick = ?", &[&nick.as_str()], |row| {
+		row.get(0)
+	}).unwrap();
+	if count == 1 {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+fn create_character(conn: &Connection, nick: &String) {
+	let time: i64 = time::now_utc().to_timespec().sec;
+	conn.execute("INSERT INTO characters(?, 1, 10, 'fist', 'grungy t-shirt', ?)", &[&nick.as_str(), &time]).unwrap();
+	return;
+}
+
+fn is_alive(character: &Character) -> bool {
+	if character.hp > 0 {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+fn get_character(conn: &Connection, nick: &String) -> Character {
+	let (leveli, hpi, weapon, armor, tsi) = conn.query_row("SELECT * FROM characters WHERE nick = ?", &[&nick.as_str()], |row| {
+		(
+			row.get(1),
+			row.get(2),
+			row.get(3),
+			row.get(4),
+			row.get(5),
+		)
+	}).unwrap_or((0_i64, 0_i64, "".to_string(), "".to_string(), 0_i64));
+	let mut character: Character = Character {
+			nick: nick.clone(),
+			level: leveli as u64,
+			hp: hpi as u64,
+			weapon: weapon,
+			armor: armor,
+			ts: tsi as u64,
+			initiative: 0_u8,
+	};
+	return character;
+}
+
+// Old DnD code. strictly for reference
+/*
 fn dnd_control(conn: &Connection, msg: &String) {
 	let sekrit = "jigglyboobs".to_string(); // This needs to come from botconfig
 	let reg = Regex::new(r"^(\w),(\d+),(\d+),(\d+) (.*)$").unwrap();
@@ -2239,15 +2383,7 @@ fn item_remove(conn: &Connection, uid: i64, itemid: i64, count: i64) {
 	return;
 }
 
-fn mv_internal() {
-}
-
-fn send_inventory() {
-}
-
 //sekrit = "geezerboobs"; msg = "g/t,uid,itemid,count"; sig = openssl_digest(msg . sekrit, 'sha512'); signedmsg = msg . " " . sig;
-fn get_external_cmd() {
-}
 
 fn check_signature(sekrit: &String, msg: &String) -> bool {
 	let mut space = msg.find(" ").unwrap_or(0);
@@ -2314,44 +2450,6 @@ fn character_exists(conn: &Connection, nick: &String) -> bool {
 	return true;
 }
 
-fn set_race(conn: &Connection, nick: &String, race: &String) {
-	conn.execute("UPDATE players SET race = $1 WHERE nick = $2", &[&race.as_str(), &nick.as_str()]).unwrap();
-	let (pstr, pcon, pdex, pint, pwis, pcha) = get_racial_stat_adjustments(&race);
-	let abilities = get_racial_abilities(&race);
-	let stmt = format!("UPDATE players SET strength = strength + $1, constitution = constitution + $2, dexterity = dexterity + $3, intelligence = intelligence + $4, wisdom = wisdom + $5, charisma = charisma + $6, abilities = {} WHERE nick = $7", abilities);
-	conn.execute(stmt.as_str(), &[&pstr, &pcon, &pdex, &pint, &pwis, &pcha, &nick.as_str()]).unwrap();
-	return;
-}
-
-fn set_class(conn: &Connection, nick: &String, class: &String) {
-	conn.execute("UPDATE players SET class = $1 WHERE nick = $2", &[&class.as_str(), &nick.as_str()]).unwrap();
-	return;
-}
-
-fn list_races() -> &'static [&'static str] {
-	return &RACES;
-}
-
-fn list_classes() -> &'static [&'static str] {
-	return &CLASSES;
-}
-
-fn is_valid_race(race: &String) -> bool {
-	let races = list_races();
-	if races.contains(&race.as_str()) {
-		return true;
-	}
-	return false;
-}
-
-fn is_valid_class(class: &String) -> bool {
-	let classes = list_classes();
-	if classes.contains(&class.as_str()) {
-		return true;
-	}
-	return false;
-}
-
 fn display_player_info(conn: &Connection, player: &String, full: bool) -> String {
 	if !is_race_set(&conn, &player) || !is_class_set(&conn, &player) {
 		return format!("The character {} has not yet completed set-up.", &player);
@@ -2373,150 +2471,4 @@ fn display_player_info(conn: &Connection, player: &String, full: bool) -> String
 		info = format!("{}({}): {} {}({})", &player, uid, race, class, level);
 	}
 	return info;
-}
-
-fn get_ability_description(ability: u64) -> String {
-	let description = match ability {
-		ABILITY_DARKVISION		=> "darkvision",
-		ABILITY_SUPDARKVISION		=> "superior darkvision",
-		ABILITY_DWFRESILIENCE		=> "dwarven resilience",
-		ABILITY_DWFCOMBATTRAIN		=> "dwarven combat training",
-		ABILITY_DWFTOOLPROF		=> "dwarven tool proficiency",
-		ABILITY_DWFTOUGHNESS		=> "dwarven toughness",
-		ABILITY_DWFARMTRAIN		=> "dwarven armor training",
-		ABILITY_ELFKEENSENS		=> "keen senses",
-		ABILITY_ELFFEYANCEST		=> "fey ancestry",
-		ABILITY_ELFCOMBATTRAIN		=> "elf weapon training",
-		ABILITY_ELFCANTRIP		=> "high elf cantrip",
-		ABILITY_ELFMOTW			=> "mark of the wild",
-		ABILITY_DELFSUNBAD		=> "sunlight sensitivity",
-		ABILITY_DELFMAGIC		=> "drow magic",
-		ABILITY_DELFWEAPON		=> "drow weapon training",
-		ABILITY_HFLLUCK			=> "lucky",
-		ABILITY_HFLBRAVE		=> "brave",
-		ABILITY_HFLSTEALTH		=> "naturally stealthy",
-		ABILITY_HFLRESILIENCE		=> "stout resilience",
-		ABILITY_DBNFIRE			=> "fire breath weapon and resistance",
-		ABILITY_DBNCOLD			=> "cold breath weapon and resistance",
-		ABILITY_DBNACID			=> "acid breath weapon and resistance",
-		ABILITY_DBNLIGHT		=> "lightning breath weapon and resistance",
-		ABILITY_DBNPOIS			=> "poison breath weapon and resistance",
-		ABILITY_GNOCUNNING		=> "gnome cunning",
-		ABILITY_GNOCANTRIP		=> "natural illusionist",
-		ABILITY_HELSKILLPROF		=> "skill versatility",
-		ABILITY_HORMENACE		=> "menacing",
-		ABILITY_HORRELEND		=> "relentless endurance",
-		ABILITY_HORSAVATKS		=> "savage attacks",
-		ABILITY_TIEFIRERES		=> "hellish resistance",
-		ABILITY_TIECANTRIP		=> "infernal legacy",
-		_				=> "unknown ability",
-	};
-	return description.to_string();
-}
-
-fn get_racial_stat_adjustments(race: &String) -> (i64, i64, i64, i64, i64, i64) {
-	match &race[..] {
-		"human"			=> (1, 1, 1, 1, 1, 1),
-		"highelf"		=> (0, 0, 2, 1, 0, 0),
-		"woodelf"		=> (0, 0, 2, 0, 1, 0),
-		"darkelf"		=> (0, 0, 2, 0, 0, 1),
-		"hilldwarf"		=> (0, 2, 0, 0, 1, 0),
-		"mountaindwarf" 	=> (2, 2, 0, 0, 0, 0),
-		"lightfoothalfling"	=> (0, 0, 2, 0, 0, 1),
-		"stouthalfling"		=> (0, 1, 2, 0, 0, 0),
-		"blackdragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"bluedragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"brassdragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"bronzedragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"copperdragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"golddragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"greendragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"reddragonborn"		=> (2, 0, 0, 0, 0, 1),
-		"silverdragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"whitedragonborn"	=> (2, 0, 0, 0, 0, 1),
-		"forestgnome"		=> (0, 0, 1, 2, 0, 0),
-		"rockgnome"		=> (0, 1, 0, 2, 0, 0),
-		"halforc"		=> (2, 1, 0, 0, 0, 0),
-		"tiefling"		=> (0, 0, 0, 1, 0, 2),
-		"halfelf"		=> halfelfpicker(),	
-		_			=> (0, 0, 0, 0, 0, 0),
-	}
-}
-
-fn halfelfpicker() -> (i64, i64, i64, i64, i64, i64) {
-	let mut rng = rand::thread_rng();
-	let rnd = rng.gen::<u64>();
-	let num: i64 = ((rnd % 5) + 1) as i64;
-	match num {
-		1 => (1, 0, 0, 0, 0, 2),
-		2 => (0, 1, 0, 0, 0, 2),
-		3 => (0, 0, 1, 0, 0, 2),
-		4 => (0, 0, 0, 1, 0, 2),
-		5 => (0, 0, 0, 0, 1, 2),
-		_ => (1, 0, 0, 0, 0, 2),
-	}
-}
-
-fn get_racial_abilities(race: &String) -> u64 {
-	match &race[..] {
-		"human"			=> 0_u64,
-		"highelf"		=> ABILITY_DARKVISION | ABILITY_ELFKEENSENS | ABILITY_ELFFEYANCEST | ABILITY_ELFCOMBATTRAIN | ABILITY_ELFCANTRIP,
-		"woodelf"		=> ABILITY_DARKVISION | ABILITY_ELFKEENSENS | ABILITY_ELFFEYANCEST | ABILITY_ELFCOMBATTRAIN | ABILITY_ELFMOTW,
-		"darkelf"		=> ABILITY_DARKVISION | ABILITY_ELFKEENSENS | ABILITY_ELFFEYANCEST | ABILITY_ELFCOMBATTRAIN | ABILITY_DELFSUNBAD | ABILITY_DELFMAGIC | ABILITY_DELFWEAPON | ABILITY_SUPDARKVISION,
-		"hilldwarf"		=> ABILITY_DARKVISION | ABILITY_DWFRESILIENCE | ABILITY_DWFCOMBATTRAIN | ABILITY_DWFTOOLPROF | ABILITY_DWFTOUGHNESS,
-		"mountaindwarf"		=> ABILITY_DARKVISION | ABILITY_DWFRESILIENCE | ABILITY_DWFCOMBATTRAIN | ABILITY_DWFTOOLPROF | ABILITY_DWFARMTRAIN,
-		"lightfoothalfling"	=> ABILITY_HFLLUCK | ABILITY_HFLBRAVE | ABILITY_HFLSTEALTH,
-		"stouthalfling"		=> ABILITY_HFLLUCK | ABILITY_HFLBRAVE | ABILITY_HFLRESILIENCE,
-		"blackdragonborn"	=> ABILITY_DBNACID,
-		"bluedragonborn"	=> ABILITY_DBNLIGHT,
-		"brassdragonborn"	=> ABILITY_DBNFIRE,
-		"bronzedragonborn"	=> ABILITY_DBNLIGHT,
-		"copperdragonborn"	=> ABILITY_DBNACID,
-		"golddragonborn"	=> ABILITY_DBNFIRE,
-		"greendragonborn"	=> ABILITY_DBNPOIS,
-		"reddragonborn"		=> ABILITY_DBNFIRE,
-		"silverdragonborn"	=> ABILITY_DBNCOLD,
-		"whitedragonborn"	=> ABILITY_DBNCOLD,
-		_			=> 0_u64,
-	}
-}
-
-fn read_abilities(flags: u64) -> String {
-	let mut abilities = Vec::new();
-	let mut position: u64 = 1;
-	while position < ABILITY_NONE {
-		if flags & position != 0_u64 {
-			let text = get_ability_description(position);
-			abilities.push(text);
-		}
-		position = position * 2;
-	}
-	let combined = abilities.join(", ").to_string();
-	return combined;
-}
-
-fn is_race_set(conn: &Connection, nick: &String) -> bool {
-	let set: i32 = conn.query_row("SELECT 1 FROM players WHERE nick = $1 AND race IS NOT NULL", &[&nick.as_str()], |row| {
-		row.get(0)
-	}).unwrap_or(0);
-	if set != 0 {
-		return true;
-	}
-	false
-}
-
-fn is_class_set(conn: &Connection, nick: &String) -> bool {
-	let set: i32 = conn.query_row("SELECT 1 FROM players WHERE nick = $1 AND class IS NOT NULL", &[&nick.as_str()], |row| {
-		row.get(0)
-	}).unwrap_or(0);
-	if set != 0 {
-		return true;
-	}
-
-	false
-}
-
-
-
-
-
+}*/
