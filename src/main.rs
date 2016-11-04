@@ -2347,20 +2347,6 @@ fn get_character(conn: &Connection, nick: &String) -> Character {
 }
 
 fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
-	/*statement = format!("SELECT * from {}", &table);
-	let mut stmt = conn.prepare(statement.as_str()).unwrap();
-	let mut allrows = stmt.query_map(&[], |row| {
-		CacheEntry {
-                	age: std::i64::MAX,
-	                location: row.get(0),
-        	        weather: row.get(1),
-		}
-	}).unwrap();
-
-	for entry in allrows {
-		let thisentry = entry.unwrap();
-		wucache.push(thisentry);
-	}*/
 	struct Row {
 		nick: String,
 		lvl: i32,
@@ -2369,7 +2355,7 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 		a: String,
 	}
 
-	let mut stmt = conn.prepare("SELECT * FROM characters ORDER BY level").unwrap();
+	let mut stmt = conn.prepare("SELECT * FROM characters ORDER BY level DESC").unwrap();
 	let mut allrows = stmt.query_map(&[], |row| {
 		Row {
 			nick: row.get(0),
@@ -2380,10 +2366,12 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 		}
 	}).unwrap();
 
+	let oneSecond = Duration::new(1,0);
 	for row in allrows {
 		let mrow = row.unwrap();
-		let msg = format!("nick: {}, level: {}, hp: {}, weapon: '{}', armor: '{}'", mrow.nick, mrow.lvl, mrow.hp, mrow.w, mrow.a);
+		let msg = format!(" {} level: {}, hp: {}, weapon: '{}', armor: '{}'", mrow.nick, mrow.lvl, mrow.hp, mrow.w, mrow.a);
 		server.send_privmsg(&chan, &msg);
+		thread::sleep(oneSecond);
 	}
 }
 
