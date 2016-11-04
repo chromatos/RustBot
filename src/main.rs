@@ -634,7 +634,7 @@ fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &
 	}
 	else if args.len() > 8 && &argsbytes[..7] == "weapon ".as_bytes() {
 		let weapon = args[7..].trim().to_string();
-		fitectl_armor(&server, &conn, &chan, &nick, weapon);
+		fitectl_weapon(&server, &conn, &chan, &nick, weapon);
 	}
 }
 
@@ -2398,7 +2398,7 @@ fn fitectl_armor(server: &IrcServer, conn: &Connection, chan: &String, nick: &St
 		create_character(&conn, &nick);
 	}
 	conn.execute("UPDATE characters SET armor = ? WHERE nick = ?", &[&armor.as_str(), &nick.as_str()]).unwrap();
-	let msg = format!("weapon for {} set to {}.", &nick, &armor);
+	let msg = format!("armor for {} set to {}.", &nick, &armor);
 	server.send_privmsg(&chan, &msg);
 }
 
