@@ -624,6 +624,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 
 fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, args: String) {
 	let argsbytes = args.as_bytes();
+	println!("'{}'", args);
 	if args.len() == 10 && &argsbytes[..] == "scoreboard".as_bytes() {
 		fitectl_scoreboard(&server, &conn, &chan);
 	}
