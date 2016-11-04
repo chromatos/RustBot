@@ -624,11 +624,11 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 
 fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, args: String) {
 	let argsbytes = args.as_bytes();
-	println!("'{}' len: {} armor: {}", &args, &args.len(), &args[5..]);
+	println!("'{}' len: {} armor: '{}'", &args, &args.len(), &args[5..]);
 	if args.len() == 10 && &argsbytes[..] == "scoreboard".as_bytes() {
 		fitectl_scoreboard(&server, &conn, &chan);
 	}
-	else if args.len() > 6 && &argsbytes[..5] == "armor ".as_bytes() {
+	else if args.len() > 7 && &argsbytes[..6] == "armor ".as_bytes() {
 		let armor = args[5..].trim().to_string();
 		fitectl_armor(&server, &conn, &chan, &nick, armor);
 	}
