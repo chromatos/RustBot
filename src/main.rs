@@ -543,6 +543,14 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		command_fite(&server, &conn, &chan, &nick, target);
 		botconfig.is_fighting = false;
 	}
+	else if noprefix.len() == 7 && &noprefixbytes[..] == "fitectl".as_bytes() {
+		command_help(&server, &botconfig, &chan, Some("fitectl".to_string()));
+		return;
+	}
+	else if noprefix.len() > 8 && &noprefixbytes[..8] == "fitectl ".as_bytes() {
+		let args = noprefix[8..].trim().to_string();
+		command_fitectl(&server, &conn, &chan, &nick, args);
+	}
 	else if noprefix.len() == 9 && &noprefixbytes[..] == "goodfairy".as_bytes() {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
                         return;
@@ -612,6 +620,13 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
                 let what: String = noprefix[12..].to_string().trim().to_string();
                 command_weather_alias(&botconfig, &server, &conn, &nick, &chan, what);
         }
+}
+
+fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, args: String) {
+	let argsbytes = args.as_bytes();
+	if args.len() == 10 && &argsbytes[..] == "scoreboard".as_bytes() {
+		fitectl_scoreboard(&server, &conn, &chan);
+	}
 }
 
 fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
@@ -2329,6 +2344,47 @@ fn get_character(conn: &Connection, nick: &String) -> Character {
 			initiative: 0_u8,
 	};
 	return character;
+}
+
+fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
+	/*statement = format!("SELECT * from {}", &table);
+	let mut stmt = conn.prepare(statement.as_str()).unwrap();
+	let mut allrows = stmt.query_map(&[], |row| {
+		CacheEntry {
+                	age: std::i64::MAX,
+	                location: row.get(0),
+        	        weather: row.get(1),
+		}
+	}).unwrap();
+
+	for entry in allrows {
+		let thisentry = entry.unwrap();
+		wucache.push(thisentry);
+	}*/
+	struct Row {
+		nick: String,
+		lvl: i32,
+		hp: i32,
+		w: String,
+		a: String,
+	}
+
+	let mut stmt = conn.prepare("SELECT * FROM characters ORDER BY level").unwrap();
+	let mut allrows = stmt.query_map(&[], |row| {
+		Row {
+			nick: row.get(0),
+			lvl: row.get(1),
+			hp: row.get(2),
+			w: row.get(3),
+			a: row.get(4),
+		}
+	}).unwrap();
+
+	for row in allrows {
+		let mrow = row.unwrap();
+		let msg = format!("nick: {}, level: {}, hp: {}, weapon: '{}', armor: '{}'", mrow.nick, mrow.lvl, mrow.hp, mrow.w, mrow.a);
+		server.send_privmsg(&chan, &msg);
+	}
 }
 
 // Old DnD code. strictly for reference
