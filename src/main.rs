@@ -627,6 +627,14 @@ fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &
 	if args.len() == 10 && &argsbytes[..] == "scoreboard".as_bytes() {
 		fitectl_scoreboard(&server, &conn, &chan);
 	}
+	else if args.len() > 6 && &argsbytes[..5] == "armor ".as_bytes() {
+		let armor = args[5..].trim().to_string();
+		fitectl_armor(&server, &conn, &chan, &nick, armor);
+	}
+	else if args.len() > 8 && &argsbytes[..7] == "weapon ".as_bytes() {
+		let weapon = args[7..].trim().to_string();
+		fitectl_armor(&server, &conn, &chan, &nick, weapon);
+	}
 }
 
 fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
@@ -2373,6 +2381,24 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 		server.send_privmsg(&chan, &msg);
 		thread::sleep(oneSecond);
 	}
+}
+
+fn fitectl_weapon(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, weapon: String) {
+	if !character_exists(&conn, &nick) {
+		create_character(&conn, &nick);
+	}
+	conn.execute("UPDATE characters SET weapon = ? WHERE nick = ?", &[&weapon.as_str(), &nick.as_str()]).unwrap();
+	let msg = format!("weapon for {} set to {}.", &nick, &weapon);
+	server.send_privmsg(&chan, &msg);
+}
+
+fn fitectl_armor(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, armor: String) {
+	if !character_exists(&conn, &nick) {
+		create_character(&conn, &nick);
+	}
+	conn.execute("UPDATE characters SET armor = ? WHERE nick = ?", &[&armor.as_str(), &nick.as_str()]).unwrap();
+	let msg = format!("weapon for {} set to {}.", &nick, &armor);
+	server.send_privmsg(&chan, &msg);
 }
 
 // Old DnD code. strictly for reference
