@@ -222,6 +222,22 @@ fn main() {
 		let server = storables.server.clone();
 		let timerthread = thread::spawn(move || {
 			let mut qTimers: Vec<Timer> = Vec::new();
+			for timer in recurringTimers {
+				let mut pushme: Timer;
+				match timer {
+					TimerTypes::Recurring { ref every, ref command } => {
+						let pushme = Timer {
+							delay: every.clone() as u64,
+							action: TimerTypes::Recurring {
+								every: every.clone(),
+								command: command.clone(),
+							},
+						};
+						qTimers.push(pushme);
+					},
+					_ => {},
+				};
+			}
 			let conn = Connection::open("/home/bob/etc/snbot/usersettings.db").unwrap();
 			let tenthSecond = Duration::from_millis(100);
 			loop {
@@ -2454,6 +2470,7 @@ fn get_character(conn: &Connection, nick: &String) -> Character {
 }
 
 fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
+	let spamChan = "#fite".to_string();
 	struct Row {
 		nick: String,
 		lvl: i32,
@@ -2477,7 +2494,7 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 	for row in allrows {
 		let mrow = row.unwrap();
 		let msg = format!(" {} level: {}, hp: {}, weapon: '{}', armor: '{}'", mrow.nick, mrow.lvl, mrow.hp, mrow.w, mrow.a);
-		server.send_privmsg(&chan, &msg);
+		server.send_privmsg(&spamChan, &msg);
 		thread::sleep(oneSecond);
 	}
 }
