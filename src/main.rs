@@ -93,8 +93,21 @@ struct Character {
 	initiative: u8,
 }
 
+
+#[derive(Debug)]
+enum TimerTypes {
+	Message {chan: String, msg: String },
+	Action {chan: String, msg: String },
+}
+
+#[derive(Debug)]
+struct Timer {
+	delay: u64,
+	action: TimerTypes,
+}
+
 const DEBUG: bool = false;
-const ARMOR_CLASS: u8 = 13;
+const ARMOR_CLASS: u8 = 10;
 
 fn main() {
 	let args: Vec<_> = env::args().collect();
@@ -182,19 +195,60 @@ fn main() {
 		let server = storables.server.clone();
 		let substhread = thread::spawn(move || {
 			loop {
-			for submission in subrx.recv() {
-				if DEBUG {
-					println!("{:?}", submission);
-				}
-				thread::sleep(Duration::new(25,0));
-				let chan = submission.chan.clone();
-				if send_submission(&submission) {
-					server.send_privmsg(&chan, "Submission successful. https://soylentnews.org/submit.pl?op=list");
-				}
-				else {
-					server.send_privmsg(&chan, "Something borked during submitting, check the logs.");
+				for submission in subrx.recv() {
+					if DEBUG {
+						println!("{:?}", submission);
+					}
+					thread::sleep(Duration::new(25,0));
+					let chan = submission.chan.clone();
+					if send_submission(&submission) {
+						server.send_privmsg(&chan, "Submission successful. https://soylentnews.org/submit.pl?op=list");
+					}
+					else {
+						server.send_privmsg(&chan, "Something borked during submitting, check the logs.");
+					}
 				}
 			}
+		});
+	}
+	
+	// Spin off a timed event thread
+	let (timertx, timerrx) = mpsc::channel::<Timer>();
+	{
+		let server = storables.server.clone();
+		let timerthread = thread::spawn(move || {
+			let mut qTimers: Vec<Timer> = Vec::new();
+			let tenthSecond = Duration::from_millis(100);
+			loop {
+				match timerrx.try_recv() {
+					Err(_) => { break; },
+					Ok(mut timer) => {
+						if DEBUG {
+							println!("{:?}", timer);
+						}
+						qTimers.push(timer);
+					}
+				}
+				if !qTimers.is_empty() {
+					for timer in qTimers.iter_mut() {
+						// First handle any timers that are at zero
+						if timer.delay == 0 {
+							handle_timer(&server, &timer.action);
+						}
+						// Now decrement timers
+						if timer.delay <= 100_u64 {
+							timer.delay = 0_u64;
+						}
+						else {
+							timer.delay = timer.delay - 100_u64;
+						}
+					}
+					
+					// Drop all timers we've already executed at once to save time
+					qTimers.retain(|ref t| t.delay != 0_u64);
+				}
+				
+				thread::sleep(tenthSecond);
 			}
 		});
 	}
@@ -2160,9 +2214,16 @@ fn is_rss2(feedstr: &str) -> bool {
 	}
 }
 
+fn handle_timer(server: &IrcServer, timer: &TimerTypes) {
+	match timer {
+		&TimerTypes::Action { ref chan, ref msg } => { server.send_action(&chan, &msg); },
+		&TimerTypes::Message { ref chan, ref msg } => { server.send_privmsg(&chan, &msg); },
+	};
+}
+
 // Begin fite code
-// fite(&server, &conn, &chan, &attacker, &target);
 fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String, target: &String) {
+	let spamChan = "#fite".to_string();
 	let mut oAttacker: Character = get_character(&conn, &attacker);
 	let mut oDefender: Character = get_character(&conn, &target);
 	let mut rng = rand::thread_rng();
@@ -2216,7 +2277,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
 			let msg = format!("{} smites the everlovin crap out of {} with a {}", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon);
-			server.send_privmsg(&chan, &msg);
+			server.send_privmsg(&spamChan, &msg);
 		}
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
@@ -2226,12 +2287,12 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
 			let msg = format!("{} clobbers {} upside their head with a {}", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon);
-			server.send_privmsg(&chan, &msg);
+			server.send_privmsg(&spamChan, &msg);
 		}
 		// Miss
 		else {
 			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rAttacker.nick, &rAttacker.weapon, &rDefender.nick, &rDefender.armor);
-			server.send_privmsg(&chan, &msg);
+			server.send_privmsg(&spamChan, &msg);
 		}
 		// Bail if rDefender is dead
 		if !is_alive(&rDefender) {
@@ -2242,7 +2303,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 				rDefender.level = rDefender.level - 1;
 			}
 			let deathmsg = format!("{} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
-			server.send_privmsg(&chan, &deathmsg);	
+			server.send_privmsg(&spamChan, &deathmsg);	
 			break;
 		}
 		// whoever lost init's turn
@@ -2256,7 +2317,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
 			let msg = format!("{} smites the everlovin crap out of {} with a {}", &rDefender.nick, &rAttacker.nick, &rDefender.weapon);
-			server.send_privmsg(&chan, &msg);
+			server.send_privmsg(&spamChan, &msg);
 		}
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
@@ -2266,12 +2327,12 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
 			let msg = format!("{} clobbers {} upside their head with a {}", &rDefender.nick, &rAttacker.nick, &rDefender.weapon);
-			server.send_privmsg(&chan, &msg);
+			server.send_privmsg(&spamChan, &msg);
 		}
 		// Miss
 		else {
 			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rDefender.nick, &rDefender.weapon, &rAttacker.nick, &rAttacker.armor);
-			server.send_privmsg(&chan, &msg);
+			server.send_privmsg(&spamChan, &msg);
 		}
 		// Bail if rAttacker is dead
 		if !is_alive(&rAttacker) {
@@ -2282,7 +2343,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 				rAttacker.level = rAttacker.level - 1;
 			}
 			let deathmsg = format!("{} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
-			server.send_privmsg(&chan, &deathmsg);	
+			server.send_privmsg(&spamChan, &deathmsg);	
 			break;
 		}
 	}
