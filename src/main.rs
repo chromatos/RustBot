@@ -98,6 +98,7 @@ struct Character {
 enum TimerTypes {
 	Message {chan: String, msg: String },
 	Action {chan: String, msg: String },
+	Recurring { every: i64, command: String },
 }
 
 #[derive(Debug)]
@@ -186,6 +187,9 @@ fn main() {
 		titleres: load_titleres(None),
 		descres: load_descres(None),
 	};
+
+	let recurringTimers: Vec<TimerTypes> = get_recurring_timers(&conn);
+
 	storables.server.identify().unwrap();
 	conn.close();
 
@@ -218,6 +222,7 @@ fn main() {
 		let server = storables.server.clone();
 		let timerthread = thread::spawn(move || {
 			let mut qTimers: Vec<Timer> = Vec::new();
+			let conn = Connection::open("/home/bob/etc/snbot/usersettings.db").unwrap();
 			let tenthSecond = Duration::from_millis(100);
 			loop {
 				match timerrx.try_recv() {
@@ -233,7 +238,7 @@ fn main() {
 					for timer in qTimers.iter_mut() {
 						// First handle any timers that are at zero
 						if timer.delay == 0 {
-							handle_timer(&server, &timer.action);
+							timer.delay = handle_timer(&server, &conn, &timer.action);
 						}
 						// Now decrement timers
 						if timer.delay <= 100_u64 {
@@ -594,7 +599,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		}
 		botconfig.is_fighting = true;
 		let target = noprefix[4..].trim().to_string();
-		command_fite(&server, &conn, &chan, &nick, target);
+		command_fite(&server, &conn, &botconfig, &chan, &nick, target);
 		botconfig.is_fighting = false;
 	}
 	else if noprefix.len() == 7 && &noprefixbytes[..] == "fitectl".as_bytes() {
@@ -697,7 +702,7 @@ fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
 	server.send_privmsg(&chan, "The good fairy has come along and revived everyone");
 }
 
-fn command_fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String, target: String) {
+fn command_fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) {
 	if is_nick_here(&server, &chan, &target) {
 		if !sql_table_check(&conn, "characters".to_string()) {
 			println!("`characters` table not found, creating...");
@@ -713,7 +718,7 @@ fn command_fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: 
 			create_character(&conn, &target);
 		}
 
-		fite(&server, &conn, &chan, &attacker, &target);
+		fite(&server, &conn, &botconfig, &chan, &attacker, &target);
 	}
 	else {
 		let err = format!("looks around but doesn't see {}", &target);
@@ -2213,17 +2218,49 @@ fn is_rss2(feedstr: &str) -> bool {
 		return false;
 	}
 }
-
-fn handle_timer(server: &IrcServer, timer: &TimerTypes) {
+// Returns true if this is a recurring timer
+fn handle_timer(server: &IrcServer, conn: &Connection, timer: &TimerTypes) -> u64 {
 	match timer {
-		&TimerTypes::Action { ref chan, ref msg } => { server.send_action(&chan, &msg); },
-		&TimerTypes::Message { ref chan, ref msg } => { server.send_privmsg(&chan, &msg); },
+		&TimerTypes::Action { ref chan, ref msg } => { server.send_action(&chan, &msg); return 0_u64; },
+		&TimerTypes::Message { ref chan, ref msg } => { server.send_privmsg(&chan, &msg); return 0_u64; },
+		&TimerTypes::Recurring { ref every, ref command } => {
+			let commandstr = command.as_str();
+			match commandstr {
+				//command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String)
+				"goodfairy" => { 
+					let chan = "#fite".to_string();
+					command_goodfairy( &server, &conn, &chan );
+				},
+				_ => {},
+			}
+			return every.clone() as u64;
+		},
 	};
 }
 
+fn get_recurring_timers(conn: &Connection) -> Vec<TimerTypes> {
+	let mut recurringTimers: Vec<TimerTypes> = Vec::new();
+	let mut stmt = conn.prepare("SELECT * FROM recurring_timers").unwrap();
+	let mut allrows = stmt.query_map(&[], |row| {
+		TimerTypes::Recurring {
+			every: row.get(0),
+			command: row.get(1),
+		}
+	}).unwrap();
+	for timer in allrows {
+		if timer.is_ok() {
+			recurringTimers.push(timer.unwrap());
+		}
+	}
+	let recurringTimers = recurringTimers;
+	return recurringTimers;
+}
+
 // Begin fite code
-fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String, target: &String) {
+fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: &String) {
 	let spamChan = "#fite".to_string();
+	let msg = format!("{}fite spam going to channel {}", &botconfig.prefix, &spamChan);
+	server.send_privmsg(&chan, &msg);
 	let mut oAttacker: Character = get_character(&conn, &attacker);
 	let mut oDefender: Character = get_character(&conn, &target);
 	let mut rng = rand::thread_rng();
@@ -2303,7 +2340,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 				rDefender.level = rDefender.level - 1;
 			}
 			let deathmsg = format!("{} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
-			server.send_privmsg(&spamChan, &deathmsg);	
+			server.send_privmsg(&chan, &deathmsg);	
 			break;
 		}
 		// whoever lost init's turn
@@ -2343,7 +2380,7 @@ fn fite(server: &IrcServer, conn: &Connection, chan: &String, attacker: &String,
 				rAttacker.level = rAttacker.level - 1;
 			}
 			let deathmsg = format!("{} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
-			server.send_privmsg(&spamChan, &deathmsg);	
+			server.send_privmsg(&chan, &deathmsg);	
 			break;
 		}
 	}
