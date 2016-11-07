@@ -262,7 +262,6 @@ fn main() {
 						}
 						else {
 							timer.delay = timer.delay - 100_u64;
-							println!("{}", timer.delay);
 						}
 					}
 					
