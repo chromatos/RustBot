@@ -252,16 +252,18 @@ fn main() {
 				}
 				if !qTimers.is_empty() {
 					for timer in qTimers.iter_mut() {
-						// First handle any timers that are at zero
-						if timer.delay == 0 {
-							timer.delay = handle_timer(&server, &conn, &timer.action);
-						}
-						// Now decrement timers
+						// First decrement timers
 						if timer.delay <= 100_u64 {
 							timer.delay = 0_u64;
 						}
 						else {
 							timer.delay = timer.delay - 100_u64;
+						}
+						
+						// Now handle any timers that are at zero
+						if timer.delay == 0 {
+							timer.delay = handle_timer(&server, &conn, &timer.action);
+							println!("should have fired this:\n{:?}", &timer);
 						}
 					}
 					
@@ -699,7 +701,6 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 
 fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, args: String) {
 	let argsbytes = args.as_bytes();
-	println!("'{}' len: {} armor: '{}'", &args, &args.len(), &args[5..]);
 	if args.len() == 10 && &argsbytes[..] == "scoreboard".as_bytes() {
 		fitectl_scoreboard(&server, &conn, &chan);
 	}
@@ -711,10 +712,13 @@ fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &
 		let weapon = args[7..].trim().to_string();
 		fitectl_weapon(&server, &conn, &chan, &nick, weapon);
 	}
+	else if args.len() == 6 && &argsbytes[..6] == "status".as_bytes() {
+		fitectl_status(&server, &conn, &chan, &nick);
+	}
 }
 
 fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
-	conn.execute("UPDATE characters SET hp = level * 10", &[]).unwrap();
+	conn.execute("UPDATE characters SET hp = level + 10", &[]).unwrap();
 	server.send_privmsg(&chan, "The good fairy has come along and revived everyone");
 }
 
@@ -2497,6 +2501,32 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 		server.send_privmsg(&spamChan, &msg);
 		thread::sleep(oneSecond);
 	}
+}
+
+fn fitectl_status(server: &IrcServer, conn: &Connection, chan: &String, nick: &String) {
+	if !character_exists(&conn, &nick) {
+		create_character(&conn, &nick);
+	}
+	
+	struct Row {
+		nick: String,
+		lvl: i32,
+		hp: i32,
+		w: String,
+		a: String,
+	}
+	let result: Row = conn.query_row("SELECT * FROM characters WHERE nick = ?", &[&nick.as_str()], |row| {
+		Row {
+			nick: row.get(0),
+			lvl: row.get(1),
+			hp: row.get(2),
+			w: row.get(3),
+			a: row.get(4),
+		}
+	}).unwrap();
+
+	let msg = format!("{} level: {}, hp: {}, weapon: '{}', armor: '{}'", result.nick, result.lvl, result.hp, result.w, result.a);
+	server.send_privmsg(&chan, &msg);
 }
 
 fn fitectl_weapon(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, weapon: String) {
