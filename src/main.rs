@@ -263,7 +263,6 @@ fn main() {
 						// Now handle any timers that are at zero
 						if timer.delay == 0 {
 							timer.delay = handle_timer(&server, &conn, &timer.action);
-							println!("should have fired this:\n{:?}", &timer);
 						}
 					}
 					
