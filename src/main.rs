@@ -242,7 +242,7 @@ fn main() {
 			let tenthSecond = Duration::from_millis(100);
 			loop {
 				match timerrx.try_recv() {
-					Err(_) => { break; },
+					Err(_) => { },
 					Ok(mut timer) => {
 						if DEBUG {
 							println!("{:?}", timer);
@@ -262,6 +262,7 @@ fn main() {
 						}
 						else {
 							timer.delay = timer.delay - 100_u64;
+							println!("{}", timer.delay);
 						}
 					}
 					
