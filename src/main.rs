@@ -2295,12 +2295,12 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 
 	// Make sure both characters are currently alive
 	if !is_alive(&oAttacker) {
-		let err = format!("How can you fight when you're dead? Try again tomorrow.");
+		let err = format!("#fite How can you fight when you're dead? Try again tomorrow.");
 		server.send_privmsg(&chan, &err);
 		return;
 	}
 	if !is_alive(&oDefender) {
-		let err = format!("{}'s corpse is currently rotting on the ground. Try fighting someone who's alive.", &target);
+		let err = format!("#fite {}'s corpse is currently rotting on the ground. Try fighting someone who's alive.", &target);
 		server.send_privmsg(&chan, &err);
 		return;
 	}
@@ -2405,7 +2405,7 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 			if rAttacker.level > 1 {
 				rAttacker.level = rAttacker.level - 1;
 			}
-			let deathmsg = format!("{} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
+			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
 			server.send_privmsg(&chan, &deathmsg);	
 			break;
 		}
