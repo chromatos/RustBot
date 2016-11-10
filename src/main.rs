@@ -725,7 +725,7 @@ fn command_fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, ch
 	let blocklist = vec!["boru"];
 	for checknick in blocklist.iter() {
 		if **checknick == *target.as_str() {
-			server.send_privmsg(&chan, "I'm sorry, Dave, I can't do that.");
+			server.send_privmsg(&chan, "#fite I'm sorry, Dave, I can't do that.");
 			return;
 		}
 	}
