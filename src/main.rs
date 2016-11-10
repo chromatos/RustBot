@@ -722,6 +722,11 @@ fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
 }
 
 fn command_fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) {
+	let blocklist = vec!["boru"];
+	for checknick in blocklist.iter() {
+		if checknick.as_str() == target.as_str() {
+			server.send_privmsg(&chan, "I'm sorry, Dave, I can't do that.");
+	}
 	if is_nick_here(&server, &chan, &target) {
 		if !sql_table_check(&conn, "characters".to_string()) {
 			println!("`characters` table not found, creating...");
