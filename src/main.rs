@@ -726,6 +726,7 @@ fn command_fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, ch
 	for checknick in blocklist.iter() {
 		if **checknick == *target.as_str() {
 			server.send_privmsg(&chan, "I'm sorry, Dave, I can't do that.");
+			return;
 		}
 	}
 	if is_nick_here(&server, &chan, &target) {
