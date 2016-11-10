@@ -19,8 +19,10 @@ use std::env;
 use std::thread;
 use std::process::exit;
 use std::str;
+use std::fs::File;
 use std::io::BufReader;
 use std::io::BufRead;
+use std::io::Write;
 use std::fs::OpenOptions;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc;
@@ -32,8 +34,6 @@ use irc::client::prelude::*;
 use rustc_serialize::json::Json;
 use rusqlite::Connection;
 use rand::Rng;
-//use self::crypto::digest::Digest;
-//use self::crypto::sha2::Sha512;
 use rss::Rss;
 use atom_syndication::Feed;
 
@@ -2339,7 +2339,7 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 				damageRoll = rDefender.hp as u8;
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
-			let msg = format!("{} smites the everlovin crap out of {} with a {}", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon);
+			let msg = format!("{} smites the everlovin crap out of {} with a {} ({})", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon, damageRoll);
 			server.send_privmsg(&spamChan, &msg);
 		}
 		// Hit
@@ -2349,7 +2349,7 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 				damageRoll = rDefender.hp as u8;
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
-			let msg = format!("{} clobbers {} upside their head with a {}", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon);
+			let msg = format!("{} clobbers {} upside their head with a {} ({})", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon, damageRoll);
 			server.send_privmsg(&spamChan, &msg);
 		}
 		// Miss
@@ -2361,7 +2361,7 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 		if !is_alive(&rDefender) {
 			thread::sleep(oneSecond);
 			rAttacker.level = rAttacker.level + 1;
-			rAttacker.hp = rAttacker.hp + 10;
+			rAttacker.hp = rAttacker.hp + 1;
 			if rDefender.level > 1 {
 				rDefender.level = rDefender.level - 1;
 			}
@@ -2379,7 +2379,7 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 				damageRoll = rAttacker.hp as u8;
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
-			let msg = format!("{} smites the everlovin crap out of {} with a {}", &rDefender.nick, &rAttacker.nick, &rDefender.weapon);
+			let msg = format!("{} smites the everlovin crap out of {} with a {} ({})", &rDefender.nick, &rAttacker.nick, &rDefender.weapon, damageRoll);
 			server.send_privmsg(&spamChan, &msg);
 		}
 		// Hit
@@ -2389,7 +2389,7 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 				damageRoll = rAttacker.hp as u8;
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
-			let msg = format!("{} clobbers {} upside their head with a {}", &rDefender.nick, &rAttacker.nick, &rDefender.weapon);
+			let msg = format!("{} clobbers {} upside their head with a {} ({})", &rDefender.nick, &rAttacker.nick, &rDefender.weapon, damageRoll);
 			server.send_privmsg(&spamChan, &msg);
 		}
 		// Miss
@@ -2401,7 +2401,7 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 		if !is_alive(&rAttacker) {
 			thread::sleep(oneSecond);
 			rDefender.level = rDefender.level + 1;
-			rDefender.hp = rDefender.hp + 10;
+			rDefender.hp = rDefender.hp + 1;
 			if rAttacker.level > 1 {
 				rAttacker.level = rAttacker.level - 1;
 			}
@@ -2489,7 +2489,7 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 		a: String,
 	}
 
-	let mut stmt = conn.prepare("SELECT * FROM characters ORDER BY level DESC").unwrap();
+	let mut stmt = conn.prepare("SELECT * FROM characters ORDER BY level DESC, hp DESC, nick").unwrap();
 	let mut allrows = stmt.query_map(&[], |row| {
 		Row {
 			nick: row.get(0),
@@ -2499,14 +2499,32 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 			a: row.get(4),
 		}
 	}).unwrap();
+	
+	let mut f;
+	match File::create("/srv/sylnt.us/fitescoreboard.html").map_err(|e| e.to_string()) {
+		Ok(file) => {f = file;},
+		Err(err) => { println!("{}", err); return; },
+	}
 
-	let oneSecond = Duration::new(1,0);
+	let mut outString: String = "<html><head><title>#fite Scoreboard</title></head><body><table>
+<tr><td>Nick</td><td>Level</td><td>HitPoints</td><td>Weapon</td><td>Armor</td></tr>\n".to_string();
+
 	for row in allrows {
 		let mrow = row.unwrap();
-		let msg = format!(" {} level: {}, hp: {}, weapon: '{}', armor: '{}'", mrow.nick, mrow.lvl, mrow.hp, mrow.w, mrow.a);
-		server.send_privmsg(&spamChan, &msg);
-		thread::sleep(oneSecond);
+		let msg = format!("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n", mrow.nick, mrow.lvl, mrow.hp, mrow.w, mrow.a);
+		outString.push_str(&msg.as_str());
 	}
+	outString.push_str("</table></body></html>");
+
+	let outData = outString.as_bytes();
+	match f.write_all(outData) {
+		Ok(_) => {
+			let msg = format!("#fite scoreboard updated: https://sylnt.us/fitescoreboard.html");
+			server.send_privmsg(&chan, &msg);
+		},
+		Err(err) => { println!("{}", err); },
+	};
+	return;
 }
 
 fn fitectl_status(server: &IrcServer, conn: &Connection, chan: &String, nick: &String) {
