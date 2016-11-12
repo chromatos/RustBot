@@ -2299,7 +2299,6 @@ fn handle_timer(server: &IrcServer, feedbacktx: &Sender<Timer>, conn: &Connectio
 			// send msg to turn off botconfig.is_fighting
 			feedbacktx.send(timer);
 			// send server ping to get us a response that will trigger a read of feedbackrx
-			//let state = ServerState::new(&server
 			server.send(Message{tags: None, prefix: None, command: Command::PING("irc.soylentnews.org".to_string(), None)});
 			return 0_u64;
 		},
@@ -2428,7 +2427,14 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 				rDefender.level = rDefender.level - 1;
 			}
 			let deathmsg = format!("{} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
-			server.send_privmsg(&chan, &deathmsg);	
+			let sendme: Timer = Timer {
+				delay: msgDelay + 1000_u64,
+				action: TimerTypes::Message{
+						chan: chan.clone(),
+						msg: deathmsg,
+				},
+			};
+			timertx.send(sendme);
 			break;
 		}
 		msgDelay += 1000_u64;
@@ -2488,8 +2494,14 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 				rAttacker.level = rAttacker.level - 1;
 			}
 			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
-			//TODO make these a timer so they don't fire before all the fite messages
-			server.send_privmsg(&chan, &deathmsg);	
+			let sendme: Timer = Timer {
+				delay: msgDelay + 1000_u64,
+				action: TimerTypes::Message{
+						chan: chan.clone(),
+						msg: deathmsg,
+				},
+			};
+			timertx.send(sendme);
 			break;
 		}
 		msgDelay += 1000_u64;
@@ -2500,7 +2512,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 	save_character(&conn, &rDefender);
 	// Send a timer to the timer handling thread with msgDelay + 100 delay so it fires just after the last
 	let timer = Timer {
-		delay: msgDelay + 100_u64,
+		delay: msgDelay + 1100_u64,
 		action: TimerTypes::Sendping {
 			doping: true,
 		},
