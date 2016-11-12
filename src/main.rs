@@ -99,6 +99,8 @@ enum TimerTypes {
 	Message {chan: String, msg: String },
 	Action {chan: String, msg: String },
 	Recurring { every: i64, command: String },
+	Feedback { command: String },
+	Sendping { doping: bool },
 }
 
 #[derive(Debug)]
@@ -193,6 +195,9 @@ fn main() {
 	storables.server.identify().unwrap();
 	conn.close();
 
+	// Feedback channel that any thread can write to?
+	let (feedbacktx, feedbackrx) = mpsc::channel::<Timer>();
+
 	// Spin off a submitter listening thread
 	let (subtx, subrx) = mpsc::channel::<Submission>();
 	{	
@@ -262,7 +267,7 @@ fn main() {
 						
 						// Now handle any timers that are at zero
 						if timer.delay == 0 {
-							timer.delay = handle_timer(&server, &conn, &timer.action);
+							timer.delay = handle_timer(&server, &feedbacktx, &conn, &timer.action);
 						}
 					}
 					
@@ -303,7 +308,7 @@ fn main() {
 					process_action(&storables, &snick, &chan, &said);
 				}
 				else if is_command(&mut storables.botconfig.prefix, &said) {
-					process_command(&mut storables.titleres, &mut storables.descres, &storables.server, &subtx, &storables.conn, &mut storables.wucache, &mut storables.botconfig, &snick, &hostmask, &chan, &said);
+					process_command(&mut storables.titleres, &mut storables.descres, &storables.server, &subtx, &timertx, &storables.conn, &mut storables.wucache, &mut storables.botconfig, &snick, &hostmask, &chan, &said);
 					log_seen(&storables, &chan, &snick, &hostmask, &said, 0);
 				}
 				else {
@@ -311,7 +316,30 @@ fn main() {
 					continue;
 				}
 			},
-			irc::client::data::command::Command::PING(_,_) => continue,
+			irc::client::data::command::Command::PING(_,_) => {continue;},
+			irc::client::data::command::Command::PONG(_,_) => {
+				match feedbackrx.try_recv() {
+					Err(_) => { },
+					Ok(timer) => {
+						if DEBUG {
+							println!("{:?}", timer);
+						}
+						match timer.action {
+							TimerTypes::Feedback {ref command} => {
+								match &command[..] {
+									"fiteoff" => {
+										storables.botconfig.is_fighting = false;
+									},
+									_ => {},
+								};
+							},
+							_ => {},
+						};
+						//qTimers.push(timer);
+					}	
+				}
+				continue;
+			},
 			_ => println!("{:?}", umessage)
 		}
 	}
@@ -370,7 +398,7 @@ fn process_action(storables: &Storables, nick: &String, channel: &String, said: 
 	}
 }
 
-fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, server: &IrcServer, subtx: &Sender<Submission>, conn: &Connection, mut wucache: &mut Vec<CacheEntry>, mut botconfig: &mut BotConfig, nick: &String, hostmask: &String, chan: &String, said: &String) {
+fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, server: &IrcServer, subtx: &Sender<Submission>, timertx: &Sender<Timer>, conn: &Connection, mut wucache: &mut Vec<CacheEntry>, mut botconfig: &mut BotConfig, nick: &String, hostmask: &String, chan: &String, said: &String) {
 	let maskonly = hostmask_only(&hostmask);
 	let prefix = botconfig.prefix.clone();
 	let prefixlen = prefix.len();
@@ -596,14 +624,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 	else if noprefix.len() > 2  && &noprefixbytes[..2] == "g ".as_bytes() {
 		let searchstr = noprefix[1..].trim().to_string();
 		command_google(&server, &botconfig, &chan, searchstr);
-	}/*
-	else if noprefix.len() == 9 && &noprefixbytes[..9] == "character".as_bytes() {
-		command_help(&server, &botconfig, &chan, Some("character".to_string()));
 	}
-	else if noprefix.len() > 9 && &noprefixbytes[..10] == "character ".as_bytes() {
-		let command = noprefix[10..].trim().to_string();
-		command_character(&server, &botconfig, &conn, &chan, &nick, command);
-	}*/
 	else if noprefix.len() == 4 && &noprefixbytes[..] == "fite".as_bytes() {
 		command_help(&server, &botconfig, &chan, Some("fite".to_string()));
 		return;
@@ -616,14 +637,20 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		}
 		botconfig.is_fighting = true;
 		let target = noprefix[4..].trim().to_string();
-		command_fite(&server, &conn, &botconfig, &chan, &nick, target);
-		botconfig.is_fighting = false;
+		let stop = command_fite(&server, &timertx, &conn, &botconfig, &chan, &nick, target);
+		// Stop fighting if we didn't actually have a fite
+		botconfig.is_fighting = stop;
 	}
 	else if noprefix.len() == 7 && &noprefixbytes[..] == "fitectl".as_bytes() {
 		command_help(&server, &botconfig, &chan, Some("fitectl".to_string()));
 		return;
 	}
 	else if noprefix.len() > 8 && &noprefixbytes[..8] == "fitectl ".as_bytes() {
+		if botconfig.is_fighting {
+			let msg = format!("There's a fight going on. You'll have to wait.");
+			server.send_privmsg(&chan, &msg);
+			return;
+		}
 		let args = noprefix[8..].trim().to_string();
 		command_fitectl(&server, &conn, &chan, &nick, args);
 	}
@@ -721,12 +748,12 @@ fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
 	server.send_privmsg(&chan, "The good fairy has come along and revived everyone");
 }
 
-fn command_fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) {
+fn command_fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) -> bool {
 	let blocklist = vec!["boru"];
 	for checknick in blocklist.iter() {
 		if **checknick == *target.as_str() {
 			server.send_privmsg(&chan, "#fite I'm sorry, Dave, I can't do that.");
-			return;
+			return false;
 		}
 	}
 	if is_nick_here(&server, &chan, &target) {
@@ -734,7 +761,7 @@ fn command_fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, ch
 			println!("`characters` table not found, creating...");
 			if !sql_table_create(&conn, "characters".to_string()) {
 				server.send_privmsg(&chan, "No characters table exists and for some reason I cannot create one");
-				return;
+				return false;
 			}
 		}
 		if !character_exists(&conn, &attacker) {
@@ -744,11 +771,13 @@ fn command_fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, ch
 			create_character(&conn, &target);
 		}
 
-		fite(&server, &conn, &botconfig, &chan, &attacker, &target);
+		let returnme = fite(&server, &timertx, &conn, &botconfig, &chan, &attacker, &target);
+		return returnme;
 	}
 	else {
 		let err = format!("looks around but doesn't see {}", &target);
 		server.send_action(&chan, &err);
+		return false;
 	}
 }
 
@@ -2244,15 +2273,14 @@ fn is_rss2(feedstr: &str) -> bool {
 		return false;
 	}
 }
-// Returns true if this is a recurring timer
-fn handle_timer(server: &IrcServer, conn: &Connection, timer: &TimerTypes) -> u64 {
+// Returns the number of ms until next recurrence if this is a recurring timer
+fn handle_timer(server: &IrcServer, feedbacktx: &Sender<Timer>, conn: &Connection, timer: &TimerTypes) -> u64 {
 	match timer {
 		&TimerTypes::Action { ref chan, ref msg } => { server.send_action(&chan, &msg); return 0_u64; },
 		&TimerTypes::Message { ref chan, ref msg } => { server.send_privmsg(&chan, &msg); return 0_u64; },
 		&TimerTypes::Recurring { ref every, ref command } => {
 			let commandstr = command.as_str();
 			match commandstr {
-				//command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String)
 				"goodfairy" => { 
 					let chan = "#fite".to_string();
 					command_goodfairy( &server, &conn, &chan );
@@ -2261,6 +2289,21 @@ fn handle_timer(server: &IrcServer, conn: &Connection, timer: &TimerTypes) -> u6
 			}
 			return every.clone() as u64;
 		},
+		&TimerTypes::Sendping { ref doping } => {
+			let timer = Timer {
+				delay: 0,
+				action: TimerTypes::Feedback{
+					command: "fiteoff".to_string(),
+				},
+			};
+			// send msg to turn off botconfig.is_fighting
+			feedbacktx.send(timer);
+			// send server ping to get us a response that will trigger a read of feedbackrx
+			//let state = ServerState::new(&server
+			server.send(Message{tags: None, prefix: None, command: Command::PING("irc.soylentnews.org".to_string(), None)});
+			return 0_u64;
+		},
+		_ => {return 0_u64;},
 	};
 }
 
@@ -2283,8 +2326,9 @@ fn get_recurring_timers(conn: &Connection) -> Vec<TimerTypes> {
 }
 
 // Begin fite code
-fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: &String) {
+fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: &String) -> bool {
 	let spamChan = "#fite".to_string();
+	let mut msgDelay = 0_u64;
 	let msg = format!("{}fite spam going to channel {}", &botconfig.prefix, &spamChan);
 	server.send_privmsg(&chan, &msg);
 	let mut oAttacker: Character = get_character(&conn, &attacker);
@@ -2297,12 +2341,12 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 	if !is_alive(&oAttacker) {
 		let err = format!("#fite How can you fight when you're dead? Try again tomorrow.");
 		server.send_privmsg(&chan, &err);
-		return;
+		return false;
 	}
 	if !is_alive(&oDefender) {
 		let err = format!("#fite {}'s corpse is currently rotting on the ground. Try fighting someone who's alive.", &target);
 		server.send_privmsg(&chan, &err);
-		return;
+		return false;
 	}
 
 	// Roll initiative
@@ -2324,12 +2368,10 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 		rAttacker = &mut oDefender;
 	}
 
-	let oneSecond = Duration::new(1,0);
 
 	// Do combat rounds until someone dies
 	loop {
 		// whoever won init's turn
-		thread::sleep(oneSecond);
 		let mut attackRoll: u8 = roll_once(20_u8);
 		let mut damageRoll: u8 = 0;
 		// Crit
@@ -2340,7 +2382,14 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
 			let msg = format!("{} smites the everlovin crap out of {} with a {} ({})", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon, damageRoll);
-			server.send_privmsg(&spamChan, &msg);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
 		}
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
@@ -2350,16 +2399,29 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
 			let msg = format!("{} clobbers {} upside their head with a {} ({})", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon, damageRoll);
-			server.send_privmsg(&spamChan, &msg);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
 		}
 		// Miss
 		else {
 			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rAttacker.nick, &rAttacker.weapon, &rDefender.nick, &rDefender.armor);
-			server.send_privmsg(&spamChan, &msg);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
 		}
 		// Bail if rDefender is dead
 		if !is_alive(&rDefender) {
-			thread::sleep(oneSecond);
 			rAttacker.level = rAttacker.level + 1;
 			rAttacker.hp = rAttacker.hp + 1;
 			if rDefender.level > 1 {
@@ -2369,9 +2431,9 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 			server.send_privmsg(&chan, &deathmsg);	
 			break;
 		}
+		msgDelay += 1000_u64;
 		// whoever lost init's turn
 		attackRoll = roll_once(20_u8);
-		thread::sleep(oneSecond);
 		// Crit
 		if attackRoll == 20_u8 {
 			damageRoll = roll_once(8_u8) * 2;
@@ -2380,7 +2442,14 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
 			let msg = format!("{} smites the everlovin crap out of {} with a {} ({})", &rDefender.nick, &rAttacker.nick, &rDefender.weapon, damageRoll);
-			server.send_privmsg(&spamChan, &msg);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
 		}
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
@@ -2390,30 +2459,54 @@ fn fite(server: &IrcServer, conn: &Connection, botconfig: &BotConfig, chan: &Str
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
 			let msg = format!("{} clobbers {} upside their head with a {} ({})", &rDefender.nick, &rAttacker.nick, &rDefender.weapon, damageRoll);
-			server.send_privmsg(&spamChan, &msg);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
 		}
 		// Miss
 		else {
 			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rDefender.nick, &rDefender.weapon, &rAttacker.nick, &rAttacker.armor);
-			server.send_privmsg(&spamChan, &msg);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
 		}
 		// Bail if rAttacker is dead
 		if !is_alive(&rAttacker) {
-			thread::sleep(oneSecond);
 			rDefender.level = rDefender.level + 1;
 			rDefender.hp = rDefender.hp + 1;
 			if rAttacker.level > 1 {
 				rAttacker.level = rAttacker.level - 1;
 			}
 			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
+			//TODO make these a timer so they don't fire before all the fite messages
 			server.send_privmsg(&chan, &deathmsg);	
 			break;
 		}
+		msgDelay += 1000_u64;
 	}
 	
 	// Save characters
 	save_character(&conn, &rAttacker);
 	save_character(&conn, &rDefender);
+	// Send a timer to the timer handling thread with msgDelay + 100 delay so it fires just after the last
+	let timer = Timer {
+		delay: msgDelay + 100_u64,
+		action: TimerTypes::Sendping {
+			doping: true,
+		},
+	};
+	timertx.send(timer);
+	return true;
 }
 
 fn save_character(conn: &Connection, character: &Character) {
