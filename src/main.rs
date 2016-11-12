@@ -746,7 +746,7 @@ fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &
 
 fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
 	conn.execute("UPDATE characters SET hp = level + 10", &[]).unwrap();
-	server.send_privmsg(&chan, "The good fairy has come along and revived everyone");
+	server.send_privmsg(&chan, "#fite The good fairy has come along and revived everyone");
 }
 
 fn command_fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) -> bool {
@@ -2427,7 +2427,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 			if rDefender.level > 1 {
 				rDefender.level = rDefender.level - 1;
 			}
-			let deathmsg = format!("{} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
+			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
 			let sendme: Timer = Timer {
 				delay: msgDelay + 1000_u64,
 				action: TimerTypes::Message{
@@ -2655,7 +2655,7 @@ fn fitectl_status(server: &IrcServer, conn: &Connection, chan: &String, nick: &S
 		}
 	}).unwrap();
 
-	let msg = format!("{} level: {}, hp: {}, weapon: '{}', armor: '{}'", result.nick, result.lvl, result.hp, result.w, result.a);
+	let msg = format!("#fite {} level: {}, hp: {}, weapon: '{}', armor: '{}'", result.nick, result.lvl, result.hp, result.w, result.a);
 	server.send_privmsg(&chan, &msg);
 }
 
@@ -2664,7 +2664,7 @@ fn fitectl_weapon(server: &IrcServer, conn: &Connection, chan: &String, nick: &S
 		create_character(&conn, &nick);
 	}
 	conn.execute("UPDATE characters SET weapon = ? WHERE nick = ?", &[&weapon.as_str(), &nick.as_str()]).unwrap();
-	let msg = format!("weapon for {} set to {}.", &nick, &weapon);
+	let msg = format!("#fite weapon for {} set to {}.", &nick, &weapon);
 	server.send_privmsg(&chan, &msg);
 }
 
@@ -2673,6 +2673,6 @@ fn fitectl_armor(server: &IrcServer, conn: &Connection, chan: &String, nick: &St
 		create_character(&conn, &nick);
 	}
 	conn.execute("UPDATE characters SET armor = ? WHERE nick = ?", &[&armor.as_str(), &nick.as_str()]).unwrap();
-	let msg = format!("armor for {} set to {}.", &nick, &armor);
+	let msg = format!("#fite armor for {} set to {}.", &nick, &armor);
 	server.send_privmsg(&chan, &msg);
 }
