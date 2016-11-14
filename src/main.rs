@@ -36,6 +36,7 @@ use rusqlite::Connection;
 use rand::Rng;
 use rss::Rss;
 use atom_syndication::Feed;
+//use std::collections::HashMap;
 
 #[derive(Debug)]
 struct BotConfig {
@@ -176,6 +177,7 @@ fn main() {
 					use_ssl: Some(true),
 					encoding: Some("UTF-8".to_string()),
 					channels: Some(vec!(botconfig.channel.clone())),
+					channel_keys: None,
 					umodes: Some("+Zix".to_string()),
 					user_info: Some("MrPlow rewritten in Rust".to_string()),
 					ping_time: Some(180),
