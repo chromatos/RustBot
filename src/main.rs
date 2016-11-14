@@ -215,12 +215,9 @@ fn main() {
 	};
 
 	// I could have him join all channels by setting it in from_config but I'm not going to
-	let mut channels: Vec<String> = Vec::new();
-	
-	for channel in channels {
-		storables.server.send_join(&channel);
+	for channel in storables.channels.iter() {
+		storables.server.send_join(&channel.name);
 	}
-	
 
 	let recurringTimers: Vec<TimerTypes> = get_recurring_timers(&conn);
 
