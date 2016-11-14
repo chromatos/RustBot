@@ -71,6 +71,13 @@ struct Storables {
 	conn: Connection,
 	titleres: Vec<Regex>,
 	descres: Vec<Regex>,
+	channels: Vec<MyChannel>,
+}
+
+#[derive(Debug)]
+struct MyChannel {
+	name: String,
+	protected: bool,
 }
 
 #[derive(Debug)]
@@ -122,6 +129,20 @@ fn main() {
 	let thisbot = args[1].clone();
 	let mut wucache: Vec<CacheEntry> = vec![];
 	let conn = Connection::open("/home/bob/etc/snbot/usersettings.db").unwrap();
+	if !sql_table_check(&conn, "bot_config".to_string()) {
+		println!("`bot_config` table not found, creating...");
+		if !sql_table_create(&conn, "bot_config".to_string()) {
+			println!("No bot_config table exists and for some reason I cannot create one");
+		}
+		exit(1);
+	}
+	if !sql_table_check(&conn, "channels".to_string()) {
+		println!("`channels` table not found, creating...");
+		if !sql_table_create(&conn, "channels".to_string()) {
+			println!("No channels table exists and for some reason I cannot create one");
+		}
+		exit(1);
+	}
 	prime_weather_cache(&conn, &mut wucache);
 	let botconfig = conn.query_row("SELECT nick, server, channel, prefix, admin_hostmask, snpass, snuser, cookiefile, wu_api_key, google_key, bing_key, g_cse_id FROM bot_config WHERE nick = ?", &[&thisbot], |row| {
 			BotConfig {
@@ -190,7 +211,16 @@ fn main() {
 
 		titleres: load_titleres(None),
 		descres: load_descres(None),
+		channels: load_channels(&conn),
 	};
+
+	// I could have him join all channels by setting it in from_config but I'm not going to
+	let mut channels: Vec<String> = Vec::new();
+	
+	for channel in channels {
+		storables.server.send_join(&channel);
+	}
+	
 
 	let recurringTimers: Vec<TimerTypes> = get_recurring_timers(&conn);
 
@@ -310,7 +340,7 @@ fn main() {
 					process_action(&storables, &snick, &chan, &said);
 				}
 				else if is_command(&mut storables.botconfig.prefix, &said) {
-					process_command(&mut storables.titleres, &mut storables.descres, &storables.server, &subtx, &timertx, &storables.conn, &mut storables.wucache, &mut storables.botconfig, &snick, &hostmask, &chan, &said);
+					process_command(&mut storables.titleres, &mut storables.descres, &mut storables.channels, &storables.server, &subtx, &timertx, &storables.conn, &mut storables.wucache, &mut storables.botconfig, &snick, &hostmask, &chan, &said);
 					log_seen(&storables, &chan, &snick, &hostmask, &said, 0);
 				}
 				else {
@@ -401,7 +431,7 @@ fn process_action(storables: &Storables, nick: &String, channel: &String, said: 
 	}
 }
 
-fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, server: &IrcServer, subtx: &Sender<Submission>, timertx: &Sender<Timer>, conn: &Connection, mut wucache: &mut Vec<CacheEntry>, mut botconfig: &mut BotConfig, nick: &String, hostmask: &String, chan: &String, said: &String) {
+fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, channels: &mut Vec<MyChannel>, server: &IrcServer, subtx: &Sender<Submission>, timertx: &Sender<Timer>, conn: &Connection, mut wucache: &mut Vec<CacheEntry>, mut botconfig: &mut BotConfig, nick: &String, hostmask: &String, chan: &String, said: &String) {
 	let maskonly = hostmask_only(&hostmask);
 	let prefix = botconfig.prefix.clone();
 	let prefixlen = prefix.len();
@@ -580,7 +610,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 	else if noprefix.len() > 3 && &noprefixbytes[..4] == "part".as_bytes() {
 		if noprefix.len() == 4 {
 			let partchan = chan.clone();
-			command_part(&server, partchan);
+			command_part(&server, &channels, &chan, partchan);
 		}
 		else if noprefix.len() > 6 {
 			let mut partchan = noprefix[4..].trim().to_string();
@@ -589,7 +619,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 				let end = sp.unwrap();
 				partchan = partchan[..end].trim().to_string();
 			}
-			command_part(&server, partchan);
+			command_part(&server, &channels, &chan, partchan);
 		}
 		else {
 			server.send_privmsg(&chan, "Stop that.");
@@ -748,7 +778,12 @@ fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &
 
 fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
 	conn.execute("UPDATE characters SET hp = level + 10", &[]).unwrap();
+	let lucky: String = conn.query_row("SELECT nick FROM characters ORDER BY RANDOM() LIMIT 1", &[], |row| {
+		row.get(0)
+	}).unwrap();
+	conn.execute("UPDATE characters SET hp = level + 100 WHERE nick = ?", &[&lucky]).unwrap();
 	server.send_privmsg(&chan, "#fite The good fairy has come along and revived everyone");
+	server.send_privmsg(&chan, format!("#fite the gods have smiled upon {}", &lucky).as_str() );
 }
 
 fn command_fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) -> bool {
@@ -1140,20 +1175,32 @@ fn command_join(server: &IrcServer, joinchan: String) {
 	server.send_join(&joinchan);
 }
 
-fn command_part(server: &IrcServer, partchan: String) {
+fn command_part(server: &IrcServer, vchannels: &Vec<MyChannel>, chan: &String, partchan: String) {
 	let botconfig = server.config();
 	let channels = botconfig.clone().channels.unwrap();
 	let homechannel = channels[0].clone();
-	if homechannel.to_string() != partchan {
-		let partmsg: Message = Message {
-			tags: None,
-			prefix: None,
-			command: Command::PART(partchan, None), 
-		};
-		server.send(partmsg);
+	if homechannel.to_string() == partchan {
+		let msg = format!("No.");
+		server.send_privmsg(&chan, &msg);
 		return;
 	}
 	
+	for channel in vchannels.iter() {
+		if (channel.name == partchan) && (channel.protected) {
+			let msg = format!("No.");
+			server.send_privmsg(&chan, &msg);
+			return;
+		}
+	}
+	
+	// else
+	let partmsg: Message = Message {
+		tags: None,
+		prefix: None,
+		command: Command::PART(partchan, None), 
+	};
+	server.send(partmsg);
+	return;
 }
 
 fn command_say(server: &IrcServer, chan: String, message: String) {
@@ -1610,7 +1657,8 @@ fn sql_get_schema(table: &String) -> String {
 		"seen" => "CREATE TABLE seen(nick TEXT, hostmask TEXT, channel TEXT, said TEXT, ts UNSIGNED INT(8), action UNSIGNED INT(1) CHECK(action IN(0,1)), primary key(nick, channel) )".to_string(),
 		"smakes" => "CREATE TABLE smakes (id INTEGER PRIMARY KEY AUTOINCREMENT, smake TEXT NOT NULL)".to_string(),
 		"sammiches" => "CREATE TABLE sammiches (id INTEGER PRIMARY KEY AUTOINCREMENT, sammich TEXT NOT NULL)".to_string(),
-		"bot_config" => "CREATE TABLE bot_config(nick TEXT PRIMARY KEY, server TEXT, channel TEXT, perl_file TEXT, prefix TEXT, admin_hostmask TEXT, snpass TEXT, snuser TEXT, cookiefile TEXT, wu_api_key TEXT, google_key text)".to_string(),
+		"bot_config" => "CREATE TABLE bot_config(nick TEXT PRIMARY KEY, server TEXT, channel TEXT, perl_file TEXT, prefix TEXT, admin_hostmask TEXT, snpass TEXT, snuser TEXT, cookiefile TEXT, wu_api_key TEXT, google_key text, bing_key TEXT, g_cse_id TEXT)".to_string(),
+		"channels" => "CREATE TABLE channels (name TEXT PRIMARY KEY, protected UNSIGNED INT(2) NOT NULL DEFAULT 0)".to_string(),
 		"locations" => "CREATE TABLE locations(nick TEXT PRIMARY KEY, location TEXT)".to_string(),
 		"bots" => "CREATE TABLE bots(hostmask TEXT PRIMARY KEY NOT NULL)".to_string(),
 		"abusers" => "CREATE TABLE abusers(hostmask TEXT PRIMARY KEY NOT NULL)".to_string(),
@@ -2079,6 +2127,26 @@ fn load_descres(exists: Option<Vec<Regex>>) -> Vec<Regex> {
 	};
 }
 
+fn load_channels(conn: &Connection) -> Vec<MyChannel> {
+	let mut channels: Vec<MyChannel> = Vec::new();
+	let mut stmt = conn.prepare("SELECT * FROM channels").unwrap();
+	let mut allrows = stmt.query_map(&[], |row| {
+		let iprotected: i32 = row.get(1);
+		let mut protected: bool = false;
+		if iprotected != 0 { protected = true; }
+		MyChannel {
+			name: row.get(0),
+			protected: protected,
+		}
+	}).unwrap();
+	for channel in allrows {
+		if channel.is_ok() {
+			channels.push(channel.unwrap());
+		}
+	}
+	return channels;
+}
+
 fn get_youtube(go_key: &String, query: &String) -> String {
 	let mut dst = Vec::new();
 	{
@@ -2426,7 +2494,8 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		if !is_alive(&rDefender) {
 			rAttacker.level = rAttacker.level + 1;
 			rAttacker.hp = rAttacker.hp + 1;
-			if rDefender.level > 1 {
+			let deathRoll = roll_once(2_u8);
+			if rDefender.level > 1 && (rAttacker.level > 15 || deathRoll == 1) {
 				rDefender.level = rDefender.level - 1;
 			}
 			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
@@ -2493,7 +2562,8 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		if !is_alive(&rAttacker) {
 			rDefender.level = rDefender.level + 1;
 			rDefender.hp = rDefender.hp + 1;
-			if rAttacker.level > 1 {
+			let deathRoll = roll_once(2_u8);
+			if rAttacker.level > 1 && (rAttacker.level > 15 || deathRoll == 1) {
 				rAttacker.level = rAttacker.level - 1;
 			}
 			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
