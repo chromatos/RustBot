@@ -2404,6 +2404,8 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 	let mut rAttacker: &mut Character;
 	let mut rDefender: &mut Character;
 	let mut surprise: bool = false;
+	let mut aFumble: bool = false;
+	let mut dFumble: bool = false;
 
 	// Make sure both characters are currently alive
 	if !is_alive(&oAttacker) {
@@ -2454,8 +2456,21 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// whoever won init's turn
 		let mut attackRoll: u8 = roll_once(20_u8);
 		let mut damageRoll: u8 = 0;
+		// Previously Fumbled
+		if aFumble {
+			aFumble = false;
+			let msg = format!("{} retrieves their {} from the ground", &rAttacker.nick, &rAttacker.weapon);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
+		}
 		// Crit
-		if attackRoll == 20_u8 {
+		else if attackRoll == 20_u8 {
 			damageRoll = roll_dmg() * 2;
 			if damageRoll as u64 > rDefender.hp {
 				damageRoll = rDefender.hp as u8;
@@ -2488,9 +2503,22 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 			};
 			timertx.send(sendme);
 		}
+		// Fumble
+		else if attackRoll == 1_u8 {
+			aFumble = true;
+			let msg = format!("{}'s {} slips from their greasy fingers", &rAttacker.nick, &rAttacker.weapon);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
+		}
 		// Miss
 		else {
-			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rAttacker.nick, &rAttacker.weapon, &rDefender.nick, &rDefender.armor);
+			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}", &rAttacker.nick, &rAttacker.weapon, &rDefender.nick, &rDefender.armor);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2526,8 +2554,21 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		}
 		// whoever lost init's turn
 		attackRoll = roll_once(20_u8);
+		// Previously Fumbled
+		if dFumble {
+			dFumble = false;
+			let msg = format!("{} retrieves their {} from the ground", &rDefender.nick, &rDefender.weapon);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
+		}
 		// Crit
-		if attackRoll == 20_u8 {
+		else if attackRoll == 20_u8 {
 			damageRoll = roll_dmg() * 2;
 			if damageRoll as u64 > rAttacker.hp {
 				damageRoll = rAttacker.hp as u8;
@@ -2551,6 +2592,19 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
 			let msg = format!("{} clobbers {} upside their head with a {} ({})", &rDefender.nick, &rAttacker.nick, &rDefender.weapon, damageRoll);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
+		}
+		// Fumble
+		else if attackRoll == 1_u8 {
+			dFumble = true;
+			let msg = format!("{}'s {} slips from their greasy fingers", &rDefender.nick, &rDefender.weapon);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
