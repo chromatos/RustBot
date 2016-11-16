@@ -2456,7 +2456,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		let mut damageRoll: u8 = 0;
 		// Crit
 		if attackRoll == 20_u8 {
-			damageRoll = roll_once(8_u8) * 2;
+			damageRoll = roll_dmg() * 2;
 			if damageRoll as u64 > rDefender.hp {
 				damageRoll = rDefender.hp as u8;
 			}
@@ -2473,7 +2473,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		}
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
-			damageRoll = roll_once(8_u8);
+			damageRoll = roll_dmg();
 			if damageRoll as u64 > rDefender.hp {
 				damageRoll = rDefender.hp as u8;
 			}
@@ -2528,7 +2528,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		attackRoll = roll_once(20_u8);
 		// Crit
 		if attackRoll == 20_u8 {
-			damageRoll = roll_once(8_u8) * 2;
+			damageRoll = roll_dmg() * 2;
 			if damageRoll as u64 > rAttacker.hp {
 				damageRoll = rAttacker.hp as u8;
 			}
@@ -2545,7 +2545,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		}
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
-			damageRoll = roll_once(8_u8);
+			damageRoll = roll_dmg();
 			if damageRoll as u64 > rAttacker.hp {
 				damageRoll = rAttacker.hp as u8;
 			}
@@ -2620,6 +2620,18 @@ fn roll_once(sides: u8) -> u8 {
 	let random = rng.gen::<u64>();
 	let roll = ((random % (sides as u64)) + 1) as u8;
 	return roll;
+}
+
+fn roll_dmg() -> u8 {
+	let mut roll = roll_once(8_u8);
+	let mut total = 0_u8;
+	total += roll;
+	while roll == 8 {
+		roll = roll_once(8_u8);
+		total += roll;
+	}
+	let total = total;
+	return total;
 }
 
 fn character_exists(conn: &Connection, nick: &String) -> bool {
