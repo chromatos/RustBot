@@ -810,7 +810,7 @@ fn command_fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, 
 		return returnme;
 	}
 	else {
-		let err = format!("looks around but doesn't see {}", &target);
+		let err = format!("#fite looks around but doesn't see {}", &target);
 		server.send_action(&chan, &err);
 		return false;
 	}
@@ -2403,6 +2403,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 	let mut rng = rand::thread_rng();
 	let mut rAttacker: &mut Character;
 	let mut rDefender: &mut Character;
+	let mut surprise: bool = false;
 
 	// Make sure both characters are currently alive
 	if !is_alive(&oAttacker) {
@@ -2429,12 +2430,24 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 	if oAttacker.initiative > oDefender.initiative {
 		rAttacker = &mut oAttacker;
 		rDefender = &mut oDefender;
+		if roll_once(2_u8) == 2 {
+			surprise = true;
+			let msg = format!("{} sneaks up and ambushes {}", &rAttacker.nick, &rDefender.nick);
+			let sendme: Timer = Timer {
+				delay: msgDelay,
+				action: TimerTypes::Message{
+						chan: spamChan.clone(),
+						msg: msg,
+				},
+			};
+			timertx.send(sendme);
+			msgDelay += 1000_u64;
+		}
 	}
 	else {
 		rDefender = &mut oAttacker;
 		rAttacker = &mut oDefender;
 	}
-
 
 	// Do combat rounds until someone dies
 	loop {
@@ -2507,6 +2520,10 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 			break;
 		}
 		msgDelay += 1000_u64;
+		if surprise {
+			surprise = false;
+			continue;
+		}
 		// whoever lost init's turn
 		attackRoll = roll_once(20_u8);
 		// Crit
