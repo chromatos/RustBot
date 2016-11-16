@@ -163,6 +163,12 @@ fn main() {
 				is_fighting: false,
 			}
 		}).unwrap();
+	let channels = load_channels(&conn);
+	let mut vChannels: Vec<String> = Vec::new();
+	vChannels.push(botconfig.channel.clone());
+	for channel in channels.iter() {
+		vChannels.push(channel.name.clone());
+	}
 	let mut storables: Storables = Storables {
 		wucache: wucache,
 		conn: Connection::open("/home/bob/etc/snbot/usersettings.db").unwrap(),
@@ -197,7 +203,8 @@ fn main() {
 					password: Some(botconfig.snpass.clone()),
 					use_ssl: Some(true),
 					encoding: Some("UTF-8".to_string()),
-					channels: Some(vec!(botconfig.channel.clone())),
+					//channels: Some(vec!(botconfig.channel.clone())),
+					channels: Some(vChannels),
 					channel_keys: None,
 					umodes: Some("+Zix".to_string()),
 					user_info: Some("MrPlow rewritten in Rust".to_string()),
@@ -213,11 +220,6 @@ fn main() {
 		descres: load_descres(None),
 		channels: load_channels(&conn),
 	};
-
-	// I could have him join all channels by setting it in from_config but I'm not going to
-	for channel in storables.channels.iter() {
-		storables.server.send_join(&channel.name);
-	}
 
 	let recurringTimers: Vec<TimerTypes> = get_recurring_timers(&conn);
 
@@ -308,7 +310,7 @@ fn main() {
 			}
 		});
 	}
-	
+
 	for message in storables.server.iter() {
 		let umessage = message.unwrap();
 		let mut chan: String = "foo".to_string();
