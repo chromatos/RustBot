@@ -109,6 +109,7 @@ enum TimerTypes {
 	Recurring { every: i64, command: String },
 	Feedback { command: String },
 	Sendping { doping: bool },
+	Once { command: String },
 }
 
 #[derive(Debug)]
@@ -310,6 +311,14 @@ fn main() {
 			}
 		});
 	}
+
+	let tGoodfairy = Timer {
+		delay: 5000_u64,
+		action: TimerTypes::Once {
+			command: "goodfairy".to_string(),
+		}
+	};
+	timertx.send(tGoodfairy);
 
 	for message in storables.server.iter() {
 		let umessage = message.unwrap();
@@ -672,6 +681,9 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 		let stop = command_fite(&server, &timertx, &conn, &botconfig, &chan, &nick, target);
 		// Stop fighting if we didn't actually have a fite
 		botconfig.is_fighting = stop;
+		if stop {
+			fitectl_scoreboard(&server, &conn, &chan, true);
+		}
 	}
 	else if noprefix.len() == 7 && &noprefixbytes[..] == "fitectl".as_bytes() {
 		command_help(&server, &botconfig, &chan, Some("fitectl".to_string()));
@@ -760,7 +772,7 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 fn command_fitectl(server: &IrcServer, conn: &Connection, chan: &String, nick: &String, args: String) {
 	let argsbytes = args.as_bytes();
 	if args.len() == 10 && &argsbytes[..] == "scoreboard".as_bytes() {
-		fitectl_scoreboard(&server, &conn, &chan);
+		fitectl_scoreboard(&server, &conn, &chan, false);
 	}
 	else if args.len() > 7 && &argsbytes[..6] == "armor ".as_bytes() {
 		let armor = args[5..].trim().to_string();
@@ -783,6 +795,7 @@ fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
 	conn.execute("UPDATE characters SET hp = level + 100 WHERE nick = ?", &[&lucky]).unwrap();
 	server.send_privmsg(&chan, "#fite The good fairy has come along and revived everyone");
 	server.send_privmsg(&chan, format!("#fite the gods have smiled upon {}", &lucky).as_str() );
+	fitectl_scoreboard(&server, &conn, &chan, true);
 }
 
 fn command_fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) -> bool {
@@ -2319,15 +2332,32 @@ fn handle_timer(server: &IrcServer, feedbacktx: &Sender<Timer>, conn: &Connectio
 	match timer {
 		&TimerTypes::Action { ref chan, ref msg } => { server.send_action(&chan, &msg); return 0_u64; },
 		&TimerTypes::Message { ref chan, ref msg } => { server.send_privmsg(&chan, &msg); return 0_u64; },
-		&TimerTypes::Recurring { ref every, ref command } => {
-			let commandstr = command.as_str();
-			match commandstr {
-				"goodfairy" => { 
+		&TimerTypes::Once { ref command } => {
+			match &command[..] {
+				"scoreboard" => {
+					let chan = "#fite".to_string();
+					fitectl_scoreboard(&server, &conn, &chan, false);
+				},
+				"goodfairy" => {
 					let chan = "#fite".to_string();
 					command_goodfairy( &server, &conn, &chan );
 				},
 				_ => {},
-			}
+			};
+			return 0_u64;
+		},
+		&TimerTypes::Recurring { ref every, ref command } => {
+			match &command[..] {
+				"goodfairy" => { 
+					let chan = "#fite".to_string();
+					command_goodfairy( &server, &conn, &chan );
+				},
+				"scoreboard" => {
+					let chan = "#fite".to_string();
+					fitectl_scoreboard(&server, &conn, &chan, false);
+				},
+				_ => {},
+			};
 			return every.clone() as u64;
 		},
 		&TimerTypes::Sendping { ref doping } => {
@@ -2710,7 +2740,7 @@ fn get_character(conn: &Connection, nick: &String) -> Character {
 	return character;
 }
 
-fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
+fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String, quiet: bool) {
 	let spamChan = "#fite".to_string();
 	struct Row {
 		nick: String,
@@ -2751,7 +2781,9 @@ fn fitectl_scoreboard(server: &IrcServer, conn: &Connection, chan: &String) {
 	match f.write_all(outData) {
 		Ok(_) => {
 			let msg = format!("#fite scoreboard updated: https://sylnt.us/fitescoreboard.html");
-			server.send_privmsg(&chan, &msg);
+			if !quiet {
+				server.send_privmsg(&chan, &msg);
+			}
 		},
 		Err(err) => { println!("{}", err); },
 	};
