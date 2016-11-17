@@ -948,28 +948,46 @@ fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connectio
 	return;
 }
 
+fn body_only<'a, 'b>(mut transfer: curl::easy::Transfer<'b, 'a>, dst: &'a mut Vec<u8>) {
+	transfer.write_function(move |data: &[u8]| {
+		dst.extend_from_slice(data);
+		Ok(data.len())
+	});
+	transfer.perform().unwrap();
+}
+
+fn headers_only<'a, 'b>(mut transfer: curl::easy::Transfer<'b, 'a>, dst: &'a mut Vec<u8>) {
+	transfer.write_function(nullme).unwrap();
+	transfer.header_function(move |data: &[u8]| {
+		dst.extend_from_slice(data);
+		true
+	});
+	transfer.perform().unwrap();
+}
+
+fn nullme(data: &[u8]) -> Result<usize,curl::easy::WriteError> {
+	Ok(data.len())
+}
+
 fn command_google(server: &IrcServer, botconfig: &BotConfig, chan: &String, searchstr: String) {
 	let mut dst = Vec::new();
-	{
-		let mut easy = Easy::new();
-		let bsearchstr = &searchstr.clone().into_bytes();
-		let esearchstr = easy.url_encode(&bsearchstr[..]);
-		let bcx = &botconfig.cse_id.clone().into_bytes();
-		let ecx = easy.url_encode(&bcx[..]);
-		let bkey = &botconfig.go_key.clone().into_bytes();
-		let ekey = easy.url_encode(&bkey[..]);
-		let url = format!("https://www.googleapis.com/customsearch/v1?q={}&cx={}&safe=off&key={}", esearchstr, ecx, ekey);
+	let mut easy = Easy::new();
+	let bsearchstr = &searchstr.clone().into_bytes();
+	let esearchstr = easy.url_encode(&bsearchstr[..]);
+	let bcx = &botconfig.cse_id.clone().into_bytes();
+	let ecx = easy.url_encode(&bcx[..]);
+	let bkey = &botconfig.go_key.clone().into_bytes();
+	let ekey = easy.url_encode(&bkey[..]);
+	let url = format!("https://www.googleapis.com/customsearch/v1?q={}&cx={}&safe=off&key={}", esearchstr, ecx, ekey);
 
-		easy.url(url.as_str()).unwrap();
-		easy.write_function(|data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		});
-		easy.perform().unwrap();
-		if easy.response_code().unwrap_or(999) != 200 {
-			println!("got http response code {} in command_google", easy.response_code().unwrap_or(999));
-			return;
-		}
+	easy.url(url.as_str()).unwrap();
+	{
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
+	}
+	if easy.response_code().unwrap_or(999) != 200 {
+		println!("got http response code {} in command_google", easy.response_code().unwrap_or(999));
+		return;
 	}
 	let json = str::from_utf8(&dst[..]).unwrap_or("");
 	let jsonthing = Json::from_str(json).unwrap();
@@ -1013,10 +1031,10 @@ fn command_klingon(server: &IrcServer, botconfig: &BotConfig, chan: &String, eng
 			let url = format!("http://api.microsofttranslator.com/V2/Http.svc/Translate?text={}&from=en&to={}&contentType=text/plain", &eenglish, &lang);
 			easy.url(url.as_str()).unwrap();
 			easy.http_headers(headerlist).unwrap();
-			easy.write_function(|data: &[u8]| {
-				dst.extend_from_slice(data);
-				data.len()
-			});
+			{
+				let mut transfer = easy.transfer();
+				body_only(transfer, &mut dst);
+			}
 			easy.perform().unwrap();
 			if easy.response_code().unwrap_or(999) != 200 {
 				println!("got http response code {} in command_klingon", easy.response_code().unwrap_or(999));
@@ -1718,23 +1736,17 @@ fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: Str
 	}
 
 	let mut dst = Vec::new();
+	let mut easy = Easy::new();
+	let encloc = fix_location(&location).to_string();
+	let url = format!("http://api.wunderground.com/api/{}/forecast/q/{}.json", wu_key.to_string(), encloc.to_string());
+	easy.url(url.as_str()).unwrap();
 	{
-		let mut callback = |data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		};
-		let mut easy = Easy::new();
-		let encloc = fix_location(&location).to_string();
-		let url = format!("http://api.wunderground.com/api/{}/forecast/q/{}.json", wu_key.to_string(), encloc.to_string());
-		easy.url(url.as_str()).unwrap();
-		easy.write_function(&mut callback).unwrap();
-		easy.perform().unwrap();
-	
-		if easy.response_code().unwrap_or(999) != 200 {
-			return format!("got http response code {}", easy.response_code().unwrap_or(999)).to_string();
-		}
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
 	}
-
+	if easy.response_code().unwrap_or(999) != 200 {
+		return format!("got http response code {}", easy.response_code().unwrap_or(999)).to_string();
+	}
 
 	let json = str::from_utf8(&dst[..]).unwrap();
 	let jsonthing = Json::from_str(json).unwrap();
@@ -1905,29 +1917,18 @@ fn sub_parse_line(noprefix: &String) -> (String, String) {
 
 fn sub_get_page(url: &String) -> String {
 	let mut dst = Vec::new();
+	let mut easy = Easy::new();
+	easy.url(url.as_str()).unwrap();
 	{
-		let mut callback = |data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		};
-		let mut easy = Easy::new();
-		easy.url(url.as_str()).unwrap();
-		easy.write_function(&mut callback).unwrap();
-		easy.perform().unwrap();
-	
-		if easy.response_code().unwrap_or(999) != 200 {
-			return format!("got http response code {}", easy.response_code().unwrap_or(999)).to_string();
-		}
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
+	}
+	if easy.response_code().unwrap_or(999) != 200 {
+		return format!("got http response code {}", easy.response_code().unwrap_or(999)).to_string();
 	}
 
 	let page = str::from_utf8(&dst[..]).unwrap();
 	return page.to_string().trim().to_string();
-	/*let resp = http::handle().get(url).exec().unwrap();
-	if resp.get_code() != 200 {
-		return format!("got http response code {}", resp.get_code()).to_string();
-	}
-	let page = str::from_utf8(resp.get_body()).unwrap();
-	return page.to_string().trim().to_string();*/
 }
 
 fn sub_get_title(titleres: &Vec<Regex>, page: &String) -> String {
@@ -1979,21 +1980,16 @@ fn sub_get_reskey(cookie: &String) -> String {
 	}
 
 	let mut dst = Vec::new();
+	let mut easy = Easy::new();
+	easy.url(url.as_str()).unwrap();
+	easy.cookie(cookie.as_str()).unwrap();
 	{
-		let mut callback = |data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		};
-		let mut easy = Easy::new();
-		easy.url(url.as_str()).unwrap();
-		easy.cookie(cookie.as_str()).unwrap();
-		easy.write_function(&mut callback).unwrap();
-		easy.perform().unwrap();
-	
-		if easy.response_code().unwrap_or(999) != 200 {
-			println!("got http response code {}", easy.response_code().unwrap_or(999));
-			return "".to_string();
-		}
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
+	}
+	if easy.response_code().unwrap_or(999) != 200 {
+		println!("got http response code {}", easy.response_code().unwrap_or(999));
+		return "".to_string();
 	}
 	
 	let unparsed = str::from_utf8(&dst[..]).unwrap();
@@ -2025,24 +2021,15 @@ fn sub_get_cookie(botconfig: &mut BotConfig) -> String {
 		url = format!("https://soylentnews.org/api.pl?m=auth&op=login&nick={}&pass={}", &botconfig.nick, &botconfig.snpass).to_string();
 	}
 	let mut dst = Vec::new();
+	let mut easy = Easy::new();
+	easy.url(url.as_str()).unwrap();
 	{
-		let mut callback = |data: &[u8]| {
-			dst.extend_from_slice(data);
-			true
-		};
-		let mut nullme = |data: &[u8]| {
-			data.len()
-		};
-		let mut easy = Easy::new();
-		easy.url(url.as_str()).unwrap();
-		easy.header_function(&mut callback).unwrap();
-		easy.write_function(&mut nullme).unwrap();
-		easy.perform().unwrap();
-	
-		if easy.response_code().unwrap_or(999) != 200 {
-			println!("got http response code {}", easy.response_code().unwrap_or(999));
-			return "".to_string();
-		}
+		let mut transfer = easy.transfer();
+		headers_only(transfer, &mut dst);
+	}
+	if easy.response_code().unwrap_or(999) != 200 {
+		println!("got http response code {}", easy.response_code().unwrap_or(999));
+		return "".to_string();
 	}
 
 	let headers = str::from_utf8(&dst[..]).unwrap().split("\n");
@@ -2148,24 +2135,20 @@ fn load_channels(conn: &Connection) -> Vec<MyChannel> {
 
 fn get_youtube(go_key: &String, query: &String) -> String {
 	let mut dst = Vec::new();
+	let mut easy = Easy::new();
+	let querybytes = query.clone().into_bytes();
+	let encquery = easy.url_encode(&querybytes[..]);
+	let url = format!("https://www.googleapis.com/youtube/v3/search/?maxResults=1&q={}&order=relevance&type=video&part=snippet&key={}", encquery, go_key);
+	easy.url(url.as_str()).unwrap();
+	easy.fail_on_error(true);
 	{
-		let mut easy = Easy::new();
-		let querybytes = query.clone().into_bytes();
-		let encquery = easy.url_encode(&querybytes[..]);
-		//let querystr = String::from_utf8(encquery).unwrap();
-		let url = format!("https://www.googleapis.com/youtube/v3/search/?maxResults=1&q={}&order=relevance&type=video&part=snippet&key={}", encquery, go_key);
-		easy.url(url.as_str()).unwrap();
-		easy.write_function(|data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		});
-		easy.fail_on_error(true);
-		easy.perform().unwrap();
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
+	}
 
-		if easy.response_code().unwrap_or(999) != 200 {
-			println!("got http response code {}", easy.response_code().unwrap_or(999));
-			return "Something borked, check the logs.".to_string();
-		}
+	if easy.response_code().unwrap_or(999) != 200 {
+		println!("got http response code {}", easy.response_code().unwrap_or(999));
+		return "Something borked, check the logs.".to_string();
 	}
 	let json = str::from_utf8(&dst[..]).unwrap();
 	let jsonthing = Json::from_str(json).unwrap();
@@ -2186,40 +2169,36 @@ fn send_submission(submission: &Submission) -> bool {
 	let fooclone;
 	let mut postdata = "foo".as_bytes();
 	let mut dst = Vec::new();
-	{
-		let mut easy = Easy::new();
-		let subjectbytes = submission.subject.clone().into_bytes();
-		let encsubject = easy.url_encode(&subjectbytes[..]);
-		let storybytes = submission.story.clone().into_bytes();
-		let encstory = easy.url_encode(&storybytes[..]);
-		if DEBUG {
-			let foo = format!("primaryskid=1&sub_type=plain&tid=10&name=MrPlow&reskey={}&subj={}&story={}", submission.reskey, encsubject, encstory);
-			println!("{}", foo);
-			fooclone = foo.clone();
-			postdata = fooclone.as_bytes();
-		}
-		else {
-			let foo = format!("primaryskid=1&sub_type=plain&tid=10&name={}&reskey={}&subj={}&story={}", submission.botnick, submission.reskey, encsubject, encstory);
-			fooclone = foo.clone();
-			postdata = fooclone.as_bytes();
-		}
+	let mut easy = Easy::new();
+	let subjectbytes = submission.subject.clone().into_bytes();
+	let encsubject = easy.url_encode(&subjectbytes[..]);
+	let storybytes = submission.story.clone().into_bytes();
+	let encstory = easy.url_encode(&storybytes[..]);
+	if DEBUG {
+		let foo = format!("primaryskid=1&sub_type=plain&tid=10&name=MrPlow&reskey={}&subj={}&story={}", submission.reskey, encsubject, encstory);
+		println!("{}", foo);
+		fooclone = foo.clone();
+		postdata = fooclone.as_bytes();
+	}
+	else {
+		let foo = format!("primaryskid=1&sub_type=plain&tid=10&name={}&reskey={}&subj={}&story={}", submission.botnick, submission.reskey, encsubject, encstory);
+		fooclone = foo.clone();
+		postdata = fooclone.as_bytes();
+	}
 
-		easy.url(url.as_str()).unwrap();
-		easy.cookie(submission.cookie.as_str()).unwrap();
-		easy.write_function(|data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		}).unwrap();
-		easy.post_field_size(postdata.len() as u64).unwrap();
-		easy.post_fields_copy(postdata).unwrap();
-		easy.post(true).unwrap();
-		easy.fail_on_error(true);
-		easy.perform().unwrap();
-	
-		if easy.response_code().unwrap_or(999) != 200 {
-			println!("got http response code {} for send_submission", easy.response_code().unwrap_or(999));
-			return false;
-		}
+	easy.url(url.as_str()).unwrap();
+	easy.cookie(submission.cookie.as_str()).unwrap();
+	easy.post_field_size(postdata.len() as u64).unwrap();
+	easy.post_fields_copy(postdata).unwrap();
+	easy.post(true).unwrap();
+	easy.fail_on_error(true);
+	{
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
+	}
+	if easy.response_code().unwrap_or(999) != 200 {
+		println!("got http response code {} for send_submission", easy.response_code().unwrap_or(999));
+		return false;
 	}
 	let output: String = String::from_utf8(dst).unwrap_or("".to_string());
 	println!("{}", output);
@@ -2230,25 +2209,21 @@ fn get_bing_token(botconfig: &BotConfig) -> String {
 	let url = "https://datamarket.accesscontrol.windows.net/v2/OAuth2-13/";
 	let mut postdata = "foo".as_bytes();
 	let mut dst = Vec::new();
+	let mut easy = Easy::new();
+	let secretbytes = &botconfig.bi_key[..].as_bytes();
+	let postfields = format!("grant_type=client_credentials&scope=http://api.microsofttranslator.com&client_id=TMBuzzard_Translator&client_secret={}", easy.url_encode(secretbytes));
+	let postbytes = postfields.as_bytes();
+	easy.url(url).unwrap();
+	easy.post_field_size(postbytes.len() as u64).unwrap();
+	easy.post_fields_copy(postbytes).unwrap();
+	easy.post(true).unwrap();
 	{
-		let mut easy = Easy::new();
-		let secretbytes = &botconfig.bi_key[..].as_bytes();
-		let postfields = format!("grant_type=client_credentials&scope=http://api.microsofttranslator.com&client_id=TMBuzzard_Translator&client_secret={}", easy.url_encode(secretbytes));
-		let postbytes = postfields.as_bytes();
-		easy.url(url).unwrap();
-		easy.write_function(|data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		});
-		easy.post_field_size(postbytes.len() as u64).unwrap();
-		easy.post_fields_copy(postbytes).unwrap();
-		easy.post(true).unwrap();
-		easy.perform().unwrap();
-
-		if easy.response_code().unwrap_or(999) != 200 {
-			println!("got http response code {} for get_bing_token", easy.response_code().unwrap_or(999));
-			return "".to_string();
-		}
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
+	}
+	if easy.response_code().unwrap_or(999) != 200 {
+		println!("got http response code {} for get_bing_token", easy.response_code().unwrap_or(999));
+		return "".to_string();
 	}
 	let json: String = String::from_utf8(dst).unwrap_or("".to_string());
 	let jsonthing = Json::from_str(json.as_str()).unwrap();
@@ -2289,21 +2264,17 @@ fn is_nick_here(server: &IrcServer, chan: &String, nick: &String) -> bool {
 
 fn get_raw_feed(feed: &String) -> String {
 	let mut dst = Vec::new();
+	let mut easy = Easy::new();
+	let url = feed.clone();
+	easy.url(url.as_str()).unwrap();
+	easy.fail_on_error(true);
 	{
-		let mut easy = Easy::new();
-		let url = feed.clone();
-		easy.url(url.as_str()).unwrap();
-		easy.write_function(|data: &[u8]| {
-			dst.extend_from_slice(data);
-			data.len()
-		});
-		easy.fail_on_error(true);
-		easy.perform().unwrap();
-
-		if easy.response_code().unwrap_or(999) != 200 {
-			println!("got http response code {}", easy.response_code().unwrap_or(999));
-			return "Something borked, check the logs.".to_string();
-		}
+		let mut transfer = easy.transfer();
+		body_only(transfer, &mut dst);
+	}
+	if easy.response_code().unwrap_or(999) != 200 {
+		println!("got http response code {}", easy.response_code().unwrap_or(999));
+		return "Something borked, check the logs.".to_string();
 	}
 	let feed_data = str::from_utf8(&dst[..]).unwrap();
 	return feed_data.to_string();
