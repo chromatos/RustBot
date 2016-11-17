@@ -786,7 +786,7 @@ fn command_goodfairy(server: &IrcServer, conn: &Connection, chan: &String) {
 }
 
 fn command_fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfig: &BotConfig, chan: &String, attacker: &String, target: String) -> bool {
-	let blocklist = vec!["boru"];
+	let blocklist = vec!["boru", "Bytram", "bytram"];
 	for checknick in blocklist.iter() {
 		if **checknick == *target.as_str() {
 			server.send_privmsg(&chan, "#fite I'm sorry, Dave, I can't do that.");
