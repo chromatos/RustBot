@@ -2334,10 +2334,6 @@ fn handle_timer(server: &IrcServer, feedbacktx: &Sender<Timer>, conn: &Connectio
 		&TimerTypes::Message { ref chan, ref msg } => { server.send_privmsg(&chan, &msg); return 0_u64; },
 		&TimerTypes::Once { ref command } => {
 			match &command[..] {
-				"scoreboard" => {
-					let chan = "#fite".to_string();
-					fitectl_scoreboard(&server, &conn, &chan, false);
-				},
 				"goodfairy" => {
 					let chan = "#fite".to_string();
 					command_goodfairy( &server, &conn, &chan );
@@ -2454,6 +2450,21 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		rAttacker = &mut oDefender;
 	}
 
+	let vbold = vec![2];
+	let vitallic = vec![29];
+	let vclearall = vec![15];
+	let vcolor = vec![3];
+	let bold = str::from_utf8(&vbold).unwrap();
+	let itallic = str::from_utf8(&vitallic).unwrap();
+	let color = str::from_utf8(&vcolor).unwrap();
+	let clearall = str::from_utf8(&vclearall).unwrap();
+	let anick = format!("{}{}{}", &bold, &rAttacker.nick, &clearall);
+	let dnick = format!("{}{}{}", &bold, &rDefender.nick, &clearall);
+	let aweapon = format!("{}{}{}", &itallic, &rAttacker.weapon, &clearall);
+	let dweapon = format!("{}{}{}", &itallic, &rDefender.weapon, &clearall);
+	let aarmor = format!("{}{}{}", &itallic, &rAttacker.armor, &clearall);
+	let darmor = format!("{}{}{}", &itallic, &rDefender.armor, &clearall);
+
 	// Do combat rounds until someone dies
 	loop {
 		// whoever won init's turn
@@ -2462,7 +2473,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Previously Fumbled
 		if aFumble {
 			aFumble = false;
-			let msg = format!("{} retrieves their {} from the ground", &rAttacker.nick, &rAttacker.weapon);
+			let msg = format!("{} retrieves their {} from the ground", &anick, &aweapon);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2475,11 +2486,11 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Crit
 		else if attackRoll == 20_u8 {
 			damageRoll = roll_dmg() * 2;
+			let msg = format!("{} smites the everlovin crap out of {} with a {} ({}04{}{})", &anick, &dnick, &aweapon, &color, damageRoll, &color);
 			if damageRoll as u64 > rDefender.hp {
 				damageRoll = rDefender.hp as u8;
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
-			let msg = format!("{} smites the everlovin crap out of {} with a {} ({})", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon, damageRoll);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2492,11 +2503,11 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
 			damageRoll = roll_dmg();
+			let msg = format!("{} clobbers {} upside their head with a {} ({}14{}{})", &anick, &dnick, &aweapon, &color, damageRoll, &color);
 			if damageRoll as u64 > rDefender.hp {
 				damageRoll = rDefender.hp as u8;
 			}
 			rDefender.hp = rDefender.hp - (damageRoll as u64);
-			let msg = format!("{} clobbers {} upside their head with a {} ({})", &rAttacker.nick, &rDefender.nick, &rAttacker.weapon, damageRoll);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2509,7 +2520,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Fumble
 		else if attackRoll == 1_u8 {
 			aFumble = true;
-			let msg = format!("{}'s {} slips from their greasy fingers", &rAttacker.nick, &rAttacker.weapon);
+			let msg = format!("{}'s {} slips from their greasy fingers", &anick, &aweapon);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2521,7 +2532,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		}
 		// Miss
 		else {
-			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}", &rAttacker.nick, &rAttacker.weapon, &rDefender.nick, &rDefender.armor);
+			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}", &anick, &aweapon, &dnick, &darmor);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2539,7 +2550,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 			if rDefender.level > 1 && (rAttacker.level > 15 || deathRoll == 1) {
 				rDefender.level = rDefender.level - 1;
 			}
-			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rDefender.nick, &rAttacker.nick);
+			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &dnick, &anick);
 			let sendme: Timer = Timer {
 				delay: msgDelay + 1000_u64,
 				action: TimerTypes::Message{
@@ -2560,7 +2571,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Previously Fumbled
 		if dFumble {
 			dFumble = false;
-			let msg = format!("{} retrieves their {} from the ground", &rDefender.nick, &rDefender.weapon);
+			let msg = format!("{} retrieves their {} from the ground", &dnick, &dweapon);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2573,11 +2584,11 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Crit
 		else if attackRoll == 20_u8 {
 			damageRoll = roll_dmg() * 2;
+			let msg = format!("{} smites the everlovin crap out of {} with a {} ({}04{}{})", &dnick, &anick, &dweapon, &color, damageRoll, &color);
 			if damageRoll as u64 > rAttacker.hp {
 				damageRoll = rAttacker.hp as u8;
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
-			let msg = format!("{} smites the everlovin crap out of {} with a {} ({})", &rDefender.nick, &rAttacker.nick, &rDefender.weapon, damageRoll);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2590,11 +2601,11 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Hit
 		else if attackRoll > ARMOR_CLASS {
 			damageRoll = roll_dmg();
+			let msg = format!("{} clobbers {} upside their head with a {} ({}14{}{})", &dnick, &anick, &dweapon, &color, damageRoll, &color);
 			if damageRoll as u64 > rAttacker.hp {
 				damageRoll = rAttacker.hp as u8;
 			}
 			rAttacker.hp = rAttacker.hp - (damageRoll as u64);
-			let msg = format!("{} clobbers {} upside their head with a {} ({})", &rDefender.nick, &rAttacker.nick, &rDefender.weapon, damageRoll);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2607,7 +2618,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		// Fumble
 		else if attackRoll == 1_u8 {
 			dFumble = true;
-			let msg = format!("{}'s {} slips from their greasy fingers", &rDefender.nick, &rDefender.weapon);
+			let msg = format!("{}'s {} slips from their greasy fingers", &dnick, &dweapon);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2619,7 +2630,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 		}
 		// Miss
 		else {
-			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &rDefender.nick, &rDefender.weapon, &rAttacker.nick, &rAttacker.armor);
+			let msg = format!("{} swings mightily but their {} is deflected by {}'s {}.", &dnick, &dweapon, &anick, &aarmor);
 			let sendme: Timer = Timer {
 				delay: msgDelay,
 				action: TimerTypes::Message{
@@ -2637,7 +2648,7 @@ fn fite(server: &IrcServer, timertx: &Sender<Timer>, conn: &Connection, botconfi
 			if rAttacker.level > 1 && (rAttacker.level > 15 || deathRoll == 1) {
 				rAttacker.level = rAttacker.level - 1;
 			}
-			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &rAttacker.nick, &rDefender.nick);
+			let deathmsg = format!("#fite {} falls broken at {}'s feet.", &anick, &dnick);
 			let sendme: Timer = Timer {
 				delay: msgDelay + 1000_u64,
 				action: TimerTypes::Message{
