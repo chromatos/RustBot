@@ -994,6 +994,7 @@ fn command_google(server: &IrcServer, botconfig: &BotConfig, chan: &String, sear
 	let url = format!("https://www.googleapis.com/customsearch/v1?q={}&cx={}&safe=off&key={}", esearchstr, ecx, ekey);
 
 	easy.url(url.as_str()).unwrap();
+	// Closure so that transfer will go poof after being used
 	{
 		let mut transfer = easy.transfer();
 		body_only(transfer, &mut dst);
@@ -1003,12 +1004,13 @@ fn command_google(server: &IrcServer, botconfig: &BotConfig, chan: &String, sear
 		return;
 	}
 	let json = str::from_utf8(&dst[..]).unwrap_or("");
-	let jsonthing = Json::from_str(json).unwrap();
-	if jsonthing.find("items").is_none() {
+	let jsonthing = Json::from_str(json).unwrap_or(Json::from_str("{}").unwrap());
+	let found = jsonthing.find("items");
+	if found.is_none() {
 		server.send_privmsg(&chan, "sorry, there were no results for your query");
 		return;
 	}
-	let items = jsonthing.find("items").unwrap();
+	let items = found.unwrap();
 	let mut resurl = items[0].find("link").unwrap().to_string().trim().to_string();
 	let mut ressum = items[0].find("snippet").unwrap().to_string().trim().to_string(); 
 	if &resurl[0..1] == "\"" {
@@ -1761,13 +1763,16 @@ fn get_weather(mut wucache: &mut Vec<CacheEntry>, wu_key: &String, location: Str
 		return format!("got http response code {}", easy.response_code().unwrap_or(999)).to_string();
 	}
 
-	let json = str::from_utf8(&dst[..]).unwrap();
-	let jsonthing = Json::from_str(json).unwrap();
+	let json = str::from_utf8(&dst[..]).unwrap_or("");
+	let jsonthing = Json::from_str(json).unwrap_or(Json::from_str("{}").unwrap());
 	let forecast;
-	if jsonthing.find_path(&["forecast", "txt_forecast", "forecastday" ]).is_some() {
-		forecast = jsonthing.find_path(&["forecast", "txt_forecast", "forecastday" ]).unwrap();
+	let path = jsonthing.find_path(&["forecast", "txt_forecast", "forecastday" ]);
+	if path.is_some() {
+		forecast = path.unwrap();
 	}
-	else {return "Unable to find weather for that location".to_string();}
+	else {
+		return "Unable to find weather for that location".to_string();
+	}
 	let today = forecast[0].find_path(&["fcttext"]).unwrap().as_string().unwrap();
 	let tomorrow = forecast[2].find_path(&["fcttext"]).unwrap().as_string().unwrap();
 	let forecast = format!("Today: {} Tomorrow: {}", today, tomorrow);
@@ -1937,10 +1942,10 @@ fn sub_get_page(url: &String) -> String {
 		body_only(transfer, &mut dst);
 	}
 	if easy.response_code().unwrap_or(999) != 200 {
-		return format!("got http response code {}", easy.response_code().unwrap_or(999)).to_string();
+		return format!("got http response code {}", easy.response_code().unwrap_or(999));
 	}
 
-	let page = str::from_utf8(&dst[..]).unwrap();
+	let page = str::from_utf8(&dst[..]).unwrap_or("");
 	return page.to_string().trim().to_string();
 }
 
@@ -2005,8 +2010,8 @@ fn sub_get_reskey(cookie: &String) -> String {
 		return "".to_string();
 	}
 	
-	let unparsed = str::from_utf8(&dst[..]).unwrap();
-	let jsonthing = Json::from_str(unparsed).unwrap();
+	let unparsed = str::from_utf8(&dst[..]).unwrap_or("");
+	let jsonthing = Json::from_str(unparsed).unwrap_or(Json::from_str("{}").unwrap());
 	let resopt = jsonthing.find("reskey");
 	let mut reskey: String;
 	if resopt.is_some() {
@@ -2045,7 +2050,7 @@ fn sub_get_cookie(botconfig: &mut BotConfig) -> String {
 		return "".to_string();
 	}
 
-	let headers = str::from_utf8(&dst[..]).unwrap().split("\n");
+	let headers = str::from_utf8(&dst[..]).unwrap_or("").split("\n");
 	let mut cookie: String = "".to_string();
 	for foo in headers {
 		if foo.find("Set-Cookie:").unwrap_or(22) != 22 {
@@ -2163,9 +2168,13 @@ fn get_youtube(go_key: &String, query: &String) -> String {
 		println!("got http response code {}", easy.response_code().unwrap_or(999));
 		return "Something borked, check the logs.".to_string();
 	}
-	let json = str::from_utf8(&dst[..]).unwrap();
-	let jsonthing = Json::from_str(json).unwrap();
-	let resopt = jsonthing.find_path(&["items"]).unwrap();
+	let json = str::from_utf8(&dst[..]).unwrap_or("");
+	let jsonthing = Json::from_str(json).unwrap_or(Json::from_str("{}").unwrap());
+	let resopt = jsonthing.find_path(&["items"]);
+	if resopt.is_none() {
+		return format!("Got bad response from youtube API");
+	}
+	let resopt = resopt.unwrap();
 	let cleanme = resopt[0].find_path(&["id", "videoId"]).unwrap().as_string().unwrap().to_string();
 	return cleanme;
 
@@ -2239,7 +2248,7 @@ fn get_bing_token(botconfig: &BotConfig) -> String {
 		return "".to_string();
 	}
 	let json: String = String::from_utf8(dst).unwrap_or("".to_string());
-	let jsonthing = Json::from_str(json.as_str()).unwrap();
+	let jsonthing = Json::from_str(json.as_str()).unwrap_or(Json::from_str("{}").unwrap());
 	let tokenopt = jsonthing.find("access_token");
 	let mut token: String;
 	if tokenopt.is_some() {
@@ -2289,7 +2298,7 @@ fn get_raw_feed(feed: &String) -> String {
 		println!("got http response code {}", easy.response_code().unwrap_or(999));
 		return "Something borked, check the logs.".to_string();
 	}
-	let feed_data = str::from_utf8(&dst[..]).unwrap();
+	let feed_data = str::from_utf8(&dst[..]).unwrap_or("");
 	return feed_data.to_string();
 }
 
