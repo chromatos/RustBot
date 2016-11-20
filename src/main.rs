@@ -439,6 +439,29 @@ fn process_action(storables: &Storables, nick: &String, channel: &String, said: 
 	}
 }
 
+fn cmd_check(checkme: &[u8], against: &str, exact: bool) -> bool {
+	if exact {
+		if checkme == against.as_bytes() {
+			return true;
+		}
+		return false;
+	}
+	else {
+		let size = against.len();
+		if checkme.len() > size {
+			if &checkme[..size] == against.as_bytes() {
+				return true;
+			}
+			else {
+				return false;
+			}
+		}
+		else {
+			return false;
+		}
+	}
+}
+
 fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, channels: &mut Vec<MyChannel>, server: &IrcServer, subtx: &Sender<Submission>, timertx: &Sender<Timer>, conn: &Connection, mut wucache: &mut Vec<CacheEntry>, mut botconfig: &mut BotConfig, nick: &String, hostmask: &String, chan: &String, said: &String) {
 	let maskonly = hostmask_only(&hostmask);
 	let prefix = botconfig.prefix.clone();
@@ -447,35 +470,33 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 	let csaid: String = said.clone();
 	let noprefix: String = csaid[prefixlen..saidlen].to_string().trim().to_string();
 	let noprefixbytes = noprefix.as_bytes();
-	if noprefix.len() > 3 && &noprefixbytes[..4] == "quit".as_bytes() {
+	//if noprefix.len() > 3 && &noprefixbytes[..4] == "quit".as_bytes() {
+	if cmd_check(&noprefixbytes, "quit", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
 		command_quit(server, chan.to_string());
 	}
-	if noprefix.len() > 6 && &noprefixbytes[..7] == "pissoff".as_bytes() {
+	//if noprefix.len() > 6 && &noprefixbytes[..7] == "pissoff".as_bytes() {
+	else if cmd_check(&noprefixbytes, "pissoff", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
 		command_pissoff(server, chan.to_string());
 	}
-	if noprefix.len() > 9 && &noprefixbytes[..10] == "dieinafire".as_bytes() {
+	//if noprefix.len() > 9 && &noprefixbytes[..10] == "dieinafire".as_bytes() {
+	else if cmd_check(&noprefixbytes, "dieinafire", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
 		command_dieinafire(server, chan.to_string());
 	}
-	else if noprefix.len() > 3 && &noprefixbytes[..4] == "join".as_bytes() {
+	//else if noprefix.len() > 3 && &noprefixbytes[..4] == "join".as_bytes() {
+	else if cmd_check(&noprefixbytes, "join #", false) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
-		if noprefix.trim().len() < 7 {
-			return;
-		}
-		if noprefix[5..6].to_string() != "#".to_string() {
-			return;
-		}
-		let joinchan: String = noprefix[4..].to_string();
+		let joinchan: String = noprefix["join ".len()..].to_string();
 		command_join(&server, joinchan);
 	}
 	else if noprefix.len() > 3 && &noprefixbytes[..4] == "seen".as_bytes() {
@@ -921,44 +942,6 @@ fn command_sammich_alt(server: &IrcServer, chan: &String, target: &String) {
 		server.send_action(&chan, &action);
 		return;
 	}
-}
-
-fn command_character(server: &IrcServer, botconfig: &BotConfig, conn: &Connection, chan: &String, nick: &String, command: String) {
-	/*
-	if is_ns_faker(&server, &nick) {
-		server.send_privmsg(&chan, "Sorry, you have to be registered and identified with nickserv to play. /ns help");
-		return;
-	}
-
-	let commandbytes = command.as_bytes();
-
-	if !character_exists(&conn, &nick) && command != "new".to_string() {
-		let msg = format!("You need to register a character first with {}character new.", &botconfig.prefix);
-	}
-	// #character info
-	else if command.len() > 3 && &commandbytes[..4] == "info".as_bytes() {
-		let player = command[4..].trim().to_string();
-		if player.len() < 1 { return; }
-		else if *nick == player && character_exists(&conn, &player) {
-			// full info display
-			let info = display_player_info(&conn, &player, true);
-			server.send_privmsg(&nick, &info);
-		}
-		else if player.find(" ").is_some() {
-			server.send_privmsg(&chan, "Stop that.");
-		}
-		else if character_exists(&conn, &player) {
-			// public info display
-			let info = display_player_info(&conn, &player, false);
-			server.send_privmsg(&chan, &info);
-		}
-		else {
-			let msg = format!("Sorry, {} has not yet registered for the game.", &player);
-			server.send_privmsg(&chan, &msg);
-		}
-	}
-	else { command_help(&server, &botconfig, &chan, Some("character".to_string())); }*/
-	return;
 }
 
 fn body_only<'a, 'b>(mut transfer: curl::easy::Transfer<'b, 'a>, dst: &'a mut Vec<u8>) {
@@ -2223,7 +2206,9 @@ fn send_submission(submission: &Submission) -> bool {
 		return false;
 	}
 	let output: String = String::from_utf8(dst).unwrap_or("".to_string());
-	println!("{}", output);
+	if DEBUG {
+		println!("{}", output);
+	}
 	return true;
 }
 
