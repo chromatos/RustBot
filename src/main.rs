@@ -470,179 +470,203 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 	let csaid: String = said.clone();
 	let noprefix: String = csaid[prefixlen..saidlen].to_string().trim().to_string();
 	let noprefixbytes = noprefix.as_bytes();
-	//if noprefix.len() > 3 && &noprefixbytes[..4] == "quit".as_bytes() {
 	if cmd_check(&noprefixbytes, "quit", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
 		command_quit(server, chan.to_string());
+		return;
 	}
-	//if noprefix.len() > 6 && &noprefixbytes[..7] == "pissoff".as_bytes() {
 	else if cmd_check(&noprefixbytes, "pissoff", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
 		command_pissoff(server, chan.to_string());
+		return;
 	}
-	//if noprefix.len() > 9 && &noprefixbytes[..10] == "dieinafire".as_bytes() {
 	else if cmd_check(&noprefixbytes, "dieinafire", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
 		command_dieinafire(server, chan.to_string());
+		return;
 	}
-	//else if noprefix.len() > 3 && &noprefixbytes[..4] == "join".as_bytes() {
-	else if cmd_check(&noprefixbytes, "join #", false) {
+	else if cmd_check(&noprefixbytes, "join", true) || cmd_check(&noprefixbytes, "join #", false) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
-		let joinchan: String = noprefix["join ".len()..].to_string();
+		if noprefix.as_str() == "join" {
+			command_help(&server, &botconfig, &chan, Some("join".to_string()));
+			return;
+		}
+		let joinchan = noprefix["join ".len()..].trim().to_string();
 		command_join(&server, joinchan);
+		return;
 	}
-	else if noprefix.len() > 3 && &noprefixbytes[..4] == "seen".as_bytes() {
-		if noprefix.trim().len() < 6 {
+	else if cmd_check(&noprefixbytes, "seen", true) || cmd_check(&noprefixbytes, "seen ", false) {
+		if noprefix.as_str() == "seen" {
+			command_help(&server, &botconfig, &chan, Some("seen".to_string()));
 			return;
 		}
-		let who: String = noprefix[4..].to_string().trim().to_string();
+		let who = noprefix["seen ".len()..].trim().to_string();
 		command_seen(&server, &conn, &chan, who);
+		return;
 	}
-	else if noprefix.len() > 7 && &noprefixbytes[..8] == "smakeadd".as_bytes() {
+	else if cmd_check(&noprefixbytes, "smakeadd", true) || cmd_check(&noprefixbytes, "smakeadd ", false) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
-		if noprefix.trim().len() < 10 {
+		if noprefix.as_str() == "smakeadd" {
+			command_help(&server, &botconfig, &chan, Some("smakeadd".to_string()));
 			return;
 		}
-		let what: String = noprefix[8..].to_string().trim().to_string();
+		let what = noprefix["smakeadd ".len()..].trim().to_string();
 		command_smakeadd(&server, &conn, &chan, what);
+		return;
 	}
-	else if noprefix.len() > 4 && &noprefixbytes[..5] == "smake".as_bytes() {
-		if noprefix.trim().len() < 7 {
+	else if cmd_check(&noprefixbytes, "smake", true) || cmd_check(&noprefixbytes, "smake ", false) {
+		if noprefix.as_str() == "smake" {
+			command_help(&server, &botconfig, &chan, Some("smake".to_string()));
 			return;
 		}
-		let who: String = noprefix[5..].trim().to_string();
+		let who = noprefix["smake ".len()..].trim().to_string();
 		command_smake(&server, &conn, &chan, who);
+		return;
 	}
-	else if noprefix.len() > 9 && &noprefixbytes[..10] == "weatheradd".as_bytes() {
-		if noprefix.len() < 16 {
+	else if cmd_check(&noprefixbytes, "weatheradd", true) || cmd_check(&noprefixbytes, "weatheradd ", false) {
+		if noprefix.len() < "weatheradd 12345".len() {
+			command_help(&server, &botconfig, &chan, Some("weatheradd".to_string()));
 			return;
 		}
-		let checklocation: String = noprefix[10..].trim().to_string();
+		let checklocation = noprefix["weatheradd ".len()..].trim().to_string();
 		command_weatheradd(&server, &conn, &nick, &chan, checklocation);
+		return;
 	}
-	else if (noprefix.len() > 6 && &noprefixbytes[..] == "weather".as_bytes()) ||
-		(noprefix.len() > 7 && &noprefixbytes[..8] == "weather ".as_bytes()) {
+	else if cmd_check(&noprefixbytes, "weather", true) || cmd_check(&noprefixbytes, "weather ", false) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
 		let checklocation: Option<String>;
-		if noprefix.len() == 7 {
+		if noprefix.as_str() == "weather" {
 			checklocation = None;
 		}
 		else {
-			checklocation = Some(noprefix[7..].trim().to_string());
+			checklocation = Some(noprefix["weather ".len()..].trim().to_string());
 		}
 		command_weather(&botconfig, &server, &conn, &mut wucache, &nick, &chan, checklocation);
 		return;
 	}
-	else if noprefix.len() > 5 && &noprefixbytes[..6] == "abuser".as_bytes() {
+	else if cmd_check(&noprefixbytes, "abuser", true) || cmd_check(&noprefixbytes, "abuser ", false) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
-		if noprefix.trim().len() < 8 {
+		if noprefix.as_str() == "abuser" {
+			command_help(&server, &botconfig, &chan, Some("abuser".to_string()));
 			return;
 		}
-		let abuser: String = noprefix[6..].trim().to_string();
+		let abuser = noprefix["abuser ".len()..].trim().to_string();
 		command_abuser(&server, &conn, &chan, abuser);
 		return;
 	}
-	else if noprefix.len() > 2 && &noprefixbytes[..3] == "bot".as_bytes() {
+	else if cmd_check(&noprefixbytes, "bot", true) || cmd_check(&noprefixbytes, "bot ", false) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
-		if noprefix.trim().len() < 5 {
+		if noprefix.as_str() == "bot" {
+			command_help(&server, &botconfig, &chan, Some("bot".to_string()));
 			return;
 		}
-		let abuser: String = noprefix[4..].trim().to_string();
-		command_bot(&server, &conn, &chan, abuser);
+		let bot = noprefix["bot ".len()..].trim().to_string();
+		command_bot(&server, &conn, &chan, bot);
 		return;
 	}
-	else if noprefix.len() > 4 && &noprefixbytes[..5] == "admin".as_bytes() {
+	else if cmd_check(&noprefixbytes, "admin", true) || cmd_check(&noprefixbytes, "admin ", false) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
-		if noprefix.trim().len() < 7 {
+		if noprefix.as_str() == "admin" {
+			command_help(&server, &botconfig, &chan, Some("admin".to_string()));
 			return;
 		}
-		let abuser: String = noprefix[5..].trim().to_string();
-		command_admin(&server, &conn, &chan, abuser);
+		let admin = noprefix["admin ".len()..].trim().to_string();
+		command_admin(&server, &conn, &chan, admin);
 		return;
 	}
-	else if noprefix.len() > 5 && &noprefixbytes[..6] == "submit".as_bytes() {
+	else if cmd_check(&noprefixbytes, "submit", true) || cmd_check(&noprefixbytes, "submit ", false) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
 		if noprefix.find("http").is_none() {
+			command_help(&server, &botconfig, &chan, Some("submit".to_string()));
 			return;
-			//help("submit");
 		}
 		let (suburl, summary) = sub_parse_line(&noprefix);
 		command_submit(&mut botconfig, titleres, descres, &server, &chan, &subtx, suburl, summary, &nick);
+		return;
 	}
-	else if noprefix.len() > 3 && &noprefixbytes[..4] == "help".as_bytes() {
+	else if cmd_check(&noprefixbytes, "help", true) || cmd_check(&noprefixbytes, "help ", false) {
 		let command: Option<String>;
-		if noprefix.trim().len() == 4 {
+		if noprefix.as_str() == "help" {
 			command = None;
 		}
 		else {
-			command = Some(noprefix[4..].to_string().trim().to_string());
+			command = Some(noprefix["help ".len()..].trim().to_string());
 		}
 		command_help(&server, &botconfig, &chan, command);
+		return;
 	}
-	else if noprefix.len() > 6 && &noprefixbytes[..7] == "youtube".as_bytes() {
+	else if cmd_check(&noprefixbytes, "youtube", true) || cmd_check(&noprefixbytes, "youtube ", false) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
-		if noprefix.len() < 9 {
-			server.send_privmsg(&chan, get_help(&botconfig.prefix, Some("youtube".to_string())).as_str());
+		if noprefix.as_str() == "youtube" {
+			command_help(&server, &botconfig, &chan, Some("youtube".to_string()));
 			return;
 		}
-		let query: String = noprefix[7..].to_string().trim().to_string();
+		let query: String = noprefix["youtube ".len()..].trim().to_string();
 		command_youtube(&server, &botconfig, &chan, query);
+		return;
 	}
-	else if noprefix.len() > 1 && &noprefixbytes[..2] == "yt".as_bytes() {
+	else if cmd_check(&noprefixbytes, "yt", true) || cmd_check(&noprefixbytes, "yt ", false) {
 		if is_abuser(&server, &conn, &chan, &maskonly) {
 			return;
 		}
-		if noprefix.len() < 4 {
-			server.send_privmsg(&chan, get_help(&botconfig.prefix, Some("youtube".to_string())).as_str());
+		if noprefix.as_str() == "yt" {
+			command_help(&server, &botconfig, &chan, Some("youtube".to_string()));
 			return;
 		}
-		let query: String = noprefix[2..].to_string().trim().to_string();
+		let query: String = noprefix["yt ".len()..].trim().to_string();
 		command_youtube(&server, &botconfig, &chan, query);
+		return;
 	}
-	else if noprefix.len() > 8 && &noprefixbytes[..9] == "socialist".as_bytes() {
-		
-		server.send_privmsg(&chan, format!("{}, you're a socialist!", &noprefix[9..].trim()).as_str());
+	else if cmd_check(&noprefixbytes, "socialist", true) || cmd_check(&noprefixbytes, "socialist ", false) {
+		if noprefix.as_str() == "socialist" {
+			command_help(&server, &botconfig, &chan, Some("socialist".to_string()));
+			return;
+		}
+		server.send_privmsg(&chan, format!("{}, you're a socialist!", &noprefix["socialist ".len()..].trim()).as_str());
+		return;
 	}
-	else if noprefix.len() > 3 && &noprefixbytes[..4] == "roll".as_bytes() {
-		if noprefix.len() < 8 {
+	else if cmd_check(&noprefixbytes, "roll", true) || cmd_check(&noprefixbytes, "roll ", false) {
+		if noprefix.as_str() == "roll" {
 			command_help(&server, &botconfig, &chan, Some("roll".to_string()));
 			return;
 		}
-		let args = noprefix[4..].trim().to_string();
+		let args = noprefix["roll ".len()..].trim().to_string();
 		command_roll(&server, &botconfig, &chan, args);
+		return;
 	}
-	else if noprefix.len() > 2 && &noprefixbytes[..3] == "bnk".as_bytes() {
+	else if cmd_check(&noprefixbytes, "bnk", true) {
 		server.send_privmsg(&chan, "https://www.youtube.com/watch?v=9upTLWRZTfw");
+		return;
 	}
-	else if noprefix.len() > 3 && &noprefixbytes[..4] == "part".as_bytes() {
-		if noprefix.len() == 4 {
+	else if cmd_check(&noprefixbytes, "part", true) || cmd_check(&noprefixbytes, "part ", false) {
+		if noprefix.as_str() == "part" {
 			let partchan = chan.clone();
 			command_part(&server, &channels, &chan, partchan);
 		}
-		else if noprefix.len() > 6 {
-			let mut partchan = noprefix[4..].trim().to_string();
+		else {
+			let mut partchan = noprefix["part ".len()..].trim().to_string();
 			let sp = partchan.find(" ");
 			if sp.is_some() {
 				let end = sp.unwrap();
@@ -650,143 +674,170 @@ fn process_command(mut titleres: &mut Vec<Regex>, mut descres: &mut Vec<Regex>, 
 			}
 			command_part(&server, &channels, &chan, partchan);
 		}
-		else {
-			server.send_privmsg(&chan, "Stop that.");
-		}
+		return;
 	}
-	else if noprefix.len() > 2 && &noprefixbytes[..3] == "say".as_bytes() {
+	else if cmd_check(&noprefixbytes, "say", true) || cmd_check(&noprefixbytes, "say ", false) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
-		let mut space = noprefix.find(" ").unwrap_or(0);
-		let nocommand = noprefix[space..].trim().to_string();
-		space = nocommand.find(" ").unwrap_or(0);
+		if noprefix.as_str() == "say" {
+			command_help(&server, &botconfig, &chan, Some("say".to_string()));
+			return;
+		}
+		let nocommand = noprefix["say ".len()..].trim().to_string();
+		let space = nocommand.find(" ").unwrap_or(0);
 		let channel = nocommand[..space].trim().to_string();
 		let message = nocommand[space..].trim().to_string();
 		command_say(&server, channel, message);
+		return;
 	}
-	else if noprefix.len() > 3 && &noprefixbytes[..4] == "tell".as_bytes() {
+	else if cmd_check(&noprefixbytes, "tell", true) || cmd_check(&noprefixbytes, "tell ", false) {
+		if noprefix.as_str() == "tell" {
+			command_help(&server, &botconfig, &chan, Some("tell".to_string()));
+			return;
+		}
 		let space = noprefix.find(" ").unwrap_or(0);
 		if space == 0 { return; }
 		let nocommand = noprefix[space..].trim().to_string();
 		command_tell(&server, &conn, &chan, &nick, nocommand);
+		return;
 	}
-	else if noprefix.len() > 6 && &noprefixbytes[..7] == "klingon".as_bytes() {
-		if noprefix.len() < 9 {
+	else if cmd_check(&noprefixbytes, "klingon", true) || cmd_check(&noprefixbytes, "klingon ", false) {
+		if noprefix.as_str() == "klingon" {
 			command_help(&server, &botconfig, &chan, Some("klingon".to_string()));
 			return;
 		}
-		let english = noprefix[7..].trim().to_string();
+		let english = noprefix["klingon ".len()..].trim().to_string();
 		command_klingon(&server, &botconfig, &chan, english);
-	}
-	else if noprefix.len() == 1 && &noprefixbytes[..] == "g".as_bytes() {
-		command_help(&server, &botconfig, &chan, Some("g".to_string()));
 		return;
 	}
-	else if noprefix.len() > 2  && &noprefixbytes[..2] == "g ".as_bytes() {
-		let searchstr = noprefix[1..].trim().to_string();
+	else if cmd_check(&noprefixbytes, "g", true) || cmd_check(&noprefixbytes, "g ", false) {
+		if noprefix.as_str() == "g" {
+			command_help(&server, &botconfig, &chan, Some("g".to_string()));
+			return;
+		}
+		let searchstr = noprefix["g ".len()..].trim().to_string();
 		command_google(&server, &botconfig, &chan, searchstr);
-	}
-	else if noprefix.len() == 4 && &noprefixbytes[..] == "fite".as_bytes() {
-		command_help(&server, &botconfig, &chan, Some("fite".to_string()));
 		return;
 	}
-	else if noprefix.len() > 5  && &noprefixbytes[..5] == "fite ".as_bytes() {
+	else if cmd_check(&noprefixbytes, "fite", true) || cmd_check(&noprefixbytes, "fite ", false) {
+		if noprefix.as_str() == "fite" {
+			command_help(&server, &botconfig, &chan, Some("fite".to_string()));
+			return;
+		}
 		if botconfig.is_fighting {
 			let msg = format!("There's already a fight going on. Wait your turn.");
 			server.send_privmsg(&chan, &msg);
 			return;
 		}
 		botconfig.is_fighting = true;
-		let target = noprefix[4..].trim().to_string();
+		let target = noprefix["fite ".len()..].trim().to_string();
 		let stop = command_fite(&server, &timertx, &conn, &botconfig, &chan, &nick, target);
 		// Stop fighting if we didn't actually have a fite
 		botconfig.is_fighting = stop;
 		if stop {
 			fitectl_scoreboard(&server, &conn, &chan, true);
 		}
-	}
-	else if noprefix.len() == 7 && &noprefixbytes[..] == "fitectl".as_bytes() {
-		command_help(&server, &botconfig, &chan, Some("fitectl".to_string()));
 		return;
 	}
-	else if noprefix.len() > 8 && &noprefixbytes[..8] == "fitectl ".as_bytes() {
+	else if cmd_check(&noprefixbytes, "fitectl", true) || cmd_check(&noprefixbytes, "fitectl ", false) {
+		if noprefix.as_str() == "fitectl" { 
+			command_help(&server, &botconfig, &chan, Some("fitectl".to_string()));
+			return;
+		}
 		if botconfig.is_fighting {
 			let msg = format!("There's a fight going on. You'll have to wait.");
 			server.send_privmsg(&chan, &msg);
 			return;
 		}
-		let args = noprefix[8..].trim().to_string();
+		let args = noprefix["fitectl ".len()..].trim().to_string();
 		command_fitectl(&server, &conn, &chan, &nick, args);
+		return;
 	}
-	else if noprefix.len() == 9 && &noprefixbytes[..] == "goodfairy".as_bytes() {
+	else if cmd_check(&noprefixbytes, "goodfairy", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
                         return;
                 }
 		command_goodfairy(&server, &conn, &chan);
-	}
-	else if &noprefixbytes[..] == "reloadregexes".as_bytes() {
-		*titleres = load_titleres(None);
-		*descres = load_descres(None);
-	}
-	else if noprefix.len() > 10 && &noprefixbytes[..11] == "sammichadd ".as_bytes() {
-		if is_abuser(&server, &conn, &chan, &maskonly) {
-			return;
-		}
-		let sammich = noprefix[11..].trim().to_string();
-		command_sammichadd(&server, &botconfig, &conn, &chan, sammich);
-	}
-	else if noprefix.len() > 8 && &noprefixbytes[..8] == "sammich ".as_bytes() {
-		command_sammich_alt(&server, &chan, &noprefix[8..].to_string().trim().to_string());
 		return;
 	}
-	else if noprefix.len() > 6 && &noprefixbytes[..7] == "sammich".as_bytes() {
-		command_sammich(&server, &botconfig, &conn, &chan, &nick);
-	}
-	else if noprefix.len() > 5 && &noprefixbytes[..] == "nelson".as_bytes() {
-		let message = "HA HA!".to_string();
-		command_say(&server, chan.to_string(), message);
-	}
-	else if noprefix.len() > 7 && &noprefixbytes[..7] == "nelson ".as_bytes() {
-		let target = noprefix[7..].trim().to_string();
-		let message = format!("{}: HA HA!", &target);
-		command_say(&server, chan.to_string(), message);
-	}
-	else if noprefix.len() == 7 && &noprefixbytes[..] == "feedadd".as_bytes() {
-		command_help(&server, &botconfig, &chan, Some("feedadd".to_string()));
-	}
-	else if noprefix.len() > 8 && &noprefixbytes[..8] == "feedadd ".as_bytes() {
+	else if cmd_check(&noprefixbytes, "reloadregexes", true) {
 		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
 			return;
 		}
-		let feed_url = noprefix[7..].to_string().trim().to_string();
-		command_feedadd(&server, &botconfig, &conn, &chan, feed_url);
+		*titleres = load_titleres(None);
+		*descres = load_descres(None);
+		return;
 	}
-	else if noprefix.len() == 11 && &noprefixbytes[..] == "fakeweather".as_bytes() {
-		command_help(&server, &botconfig, &chan, Some("fakeweather".to_string()));
+	else if cmd_check(&noprefixbytes, "fakeweather", true) || cmd_check(&noprefixbytes, "fakeweather ", false) {
+		if is_abuser(&server, &conn, &chan, &maskonly) {
+			return;
+		}
+		if noprefix.as_str() == "sammich" {
+			command_help(&server, &botconfig, &chan, Some("sammichadd".to_string()));
+			return;
+		}
+		let sammich = noprefix["sammichadd ".len()..].trim().to_string();
+		command_sammichadd(&server, &botconfig, &conn, &chan, sammich);
+		return;
 	}
-	else if noprefix.len() > 10 && &noprefixbytes[..11] == "fakeweather ".as_bytes() {
-                if is_abuser(&server, &conn, &chan, &maskonly) {
+	else if cmd_check(&noprefixbytes, "sammich", true) || cmd_check(&noprefixbytes, "sammich ", false) {
+		if noprefix.as_str() == "sammich" {
+			command_sammich(&server, &botconfig, &conn, &chan, &nick);
+		}
+		else {
+			command_sammich_alt(&server, &chan, &noprefix["sammich ".len()..].trim().to_string());
+		}
+		return;
+	}
+	else if cmd_check(&noprefixbytes, "nelson", true) || cmd_check(&noprefixbytes, "nelson ", false) {
+		if noprefix.as_str() == "nelson" {
+			let message = "HA HA!".to_string();
+			command_say(&server, chan.to_string(), message);
+		}
+		else {
+			let target = noprefix["nelson ".len()..].trim().to_string();
+			let message = format!("{}: HA HA!", &target);
+			command_say(&server, chan.to_string(), message);
+		}
+		return;
+	}
+	else if cmd_check(&noprefixbytes, "feedadd", true) || cmd_check(&noprefixbytes, "feedadd ", false) {
+		if !is_admin(&botconfig, &server, &conn, &chan, &maskonly) {
+			return;
+		}
+		if noprefix.as_str() == "feedadd" {
+			command_help(&server, &botconfig, &chan, Some("feedadd".to_string()));
+		}
+		else {
+			let feed_url = noprefix[7..].to_string().trim().to_string();
+			command_feedadd(&server, &botconfig, &conn, &chan, feed_url);
+		}
+		return;
+	}
+	else if cmd_check(&noprefixbytes, "fakeweather", true) || cmd_check(&noprefixbytes, "fakeweather ", false) {
+		if is_abuser(&server, &conn, &chan, &maskonly) {
                         return;
                 }
-                if noprefix.trim().len() < 13 {
-                        return;
-                }
-                let what: String = noprefix[11..].to_string().trim().to_string();
+		if noprefix.as_str() == "fakeweather" {
+			command_help(&server, &botconfig, &chan, Some("fakeweather".to_string()));
+			return;
+		}
+                let what = noprefix["fakeweather ".len()..].trim().to_string();
                 command_fake_weather_add(&server, &conn, &chan, what, &mut wucache);
+		return;
         }
-	else if noprefix.len() == 12 && &noprefixbytes[..] == "weatheralias".as_bytes() {
-                command_help(&server, &botconfig, &chan, Some("weatheralias".to_string()));
-        }
-        else if noprefix.len() > 12 && &noprefixbytes[..13] == "weatheralias ".as_bytes() {
-                if is_abuser(&server, &conn, &chan, &maskonly) {
-                        return;
-                }
-                if noprefix.trim().len() < 16 {
-                        return;
-                }
-                let what: String = noprefix[12..].to_string().trim().to_string();
+	else if cmd_check(&noprefixbytes, "weatheralias", true) || cmd_check(&noprefixbytes, "weatheralias ", false) {
+		if is_abuser(&server, &conn, &chan, &maskonly) {
+			return;
+		}
+		if noprefix.as_str() == "weatheralias" {
+	                command_help(&server, &botconfig, &chan, Some("weatheralias".to_string()));
+			return;
+		}
+                let what = noprefix["weatheralias ".len()..].trim().to_string();
                 command_weather_alias(&botconfig, &server, &conn, &nick, &chan, what);
+		return;
         }
 }
 
